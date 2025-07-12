@@ -1,4 +1,4 @@
-package libvirt
+package libvirtclient
 
 import (
 	"fmt"
@@ -6,7 +6,6 @@ import (
 	"libvirt.org/go/libvirt"
 )
 
-// ConnectLibvirt establishes a new connection to the libvirt host
 func ConnectLibvirt(uri string) (*libvirt.Connect, error) {
 	conn, err := libvirt.NewConnect(uri)
 	if err != nil {

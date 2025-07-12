@@ -9,7 +9,7 @@ import (
 func StartVM(conn *libvirt.Connect, vmName string) error {
 	dom, err := conn.LookupDomainByName(vmName)
 	if err != nil {
-		return fmt.Errorf("failed to find VM %s: %v", vmName, err)
+		return fmt.Errorf("failed to lookup domain %s: %v", vmName, err)
 	}
 	return dom.Create()
 }
@@ -17,7 +17,7 @@ func StartVM(conn *libvirt.Connect, vmName string) error {
 func StopVM(conn *libvirt.Connect, vmName string) error {
 	dom, err := conn.LookupDomainByName(vmName)
 	if err != nil {
-		return fmt.Errorf("failed to find VM %s: %v", vmName, err)
+		return fmt.Errorf("failed to lookup domain %s: %v", vmName, err)
 	}
 	return dom.Shutdown()
 }
@@ -25,15 +25,16 @@ func StopVM(conn *libvirt.Connect, vmName string) error {
 func RebootVM(conn *libvirt.Connect, vmName string) error {
 	dom, err := conn.LookupDomainByName(vmName)
 	if err != nil {
-		return fmt.Errorf("failed to find VM %s: %v", vmName, err)
+		return fmt.Errorf("failed to lookup domain %s: %v", vmName, err)
 	}
-	return dom.Reboot(libvirt.DOMAIN_REBOOT_DEFAULT)
+	// no flags are defined, pass 0
+	return dom.Reboot(0)
 }
 
 func PauseVM(conn *libvirt.Connect, vmName string) error {
 	dom, err := conn.LookupDomainByName(vmName)
 	if err != nil {
-		return fmt.Errorf("failed to find VM %s: %v", vmName, err)
+		return fmt.Errorf("failed to lookup domain %s: %v", vmName, err)
 	}
 	return dom.Suspend()
 }
@@ -41,7 +42,7 @@ func PauseVM(conn *libvirt.Connect, vmName string) error {
 func ResumeVM(conn *libvirt.Connect, vmName string) error {
 	dom, err := conn.LookupDomainByName(vmName)
 	if err != nil {
-		return fmt.Errorf("failed to find VM %s: %v", vmName, err)
+		return fmt.Errorf("failed to lookup domain %s: %v", vmName, err)
 	}
 	return dom.Resume()
 }
@@ -49,10 +50,10 @@ func ResumeVM(conn *libvirt.Connect, vmName string) error {
 func DeleteVM(conn *libvirt.Connect, vmName string) error {
 	dom, err := conn.LookupDomainByName(vmName)
 	if err != nil {
-		return fmt.Errorf("failed to find VM %s: %v", vmName, err)
+		return fmt.Errorf("failed to lookup domain %s: %v", vmName, err)
 	}
 	if err := dom.Destroy(); err != nil {
-		return fmt.Errorf("failed to destroy VM %s: %v", vmName, err)
+		return fmt.Errorf("failed to destroy domain %s: %v", vmName, err)
 	}
 	return dom.Undefine()
 }
