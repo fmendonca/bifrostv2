@@ -7,7 +7,7 @@ import (
 
 var db *gorm.DB
 
-func SetupRouter() *gin.Engine {
+func SetupRouter(database *gorm.DB) *gin.Engine {
 	db = database
 	r := gin.Default()
 	SetupRoutes(r)
