@@ -1,7 +1,6 @@
 package api
 
 import (
-	"go-libvirt-api/internal/libvirt"
 	"go-libvirt-api/internal/models"
 	"go-libvirt-api/internal/service"
 	"net/http"
