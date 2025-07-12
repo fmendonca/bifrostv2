@@ -1,10 +1,7 @@
+//go:build linux
+
 package libvirtclient
 
-/*
-#cgo pkg-config: libvirt
-#include <libvirt/libvirt.h>
-#include <stdlib.h>
-*/
 import "C"
 import (
 	"errors"
