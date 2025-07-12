@@ -8,7 +8,7 @@ type Host struct {
 	Address    string
 	Port       int
 	User       string
-	AuthMethod string // ssh, tcp, socket
+	AuthMethod string
 	Password   string
 	SSHKeyPath string
 }
@@ -18,7 +18,7 @@ type VM struct {
 	HostID  uint
 	Name    string
 	CPU     int
-	Memory  int // MB
-	Disk    int // GB
+	Memory  int
+	Disk    int
 	Network string
 }
