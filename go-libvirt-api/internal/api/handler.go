@@ -1,39 +1,23 @@
 package api
 
 import (
+	"go-libvirt-api/internal/libvirtclient"
 	"go-libvirt-api/internal/models"
 	"go-libvirt-api/internal/service"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
+var db *gorm.DB
+
+func InitHandler(database *gorm.DB) {
+	db = database
+}
+
 func StartVM(c *gin.Context) {
-	vmID := c.Param("vm_id")
-	var vm models.VM
-	if err := db.First(&vm, vmID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "VM not found"})
-		return
-	}
-
-	host, err := getHostByVM(vm)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	conn, err := libvirt.ConnectTCPTLS(host.Address)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	defer conn.Disconnect()
-
-	if err := service.StartVM(conn, vm.Name); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-	} else {
-		c.JSON(http.StatusOK, gin.H{"message": "VM started"})
-	}
+	controlVM(c, service.StartVM, "VM started")
 }
 
 func StopVM(c *gin.Context) {
@@ -56,7 +40,7 @@ func DeleteVM(c *gin.Context) {
 	controlVM(c, service.DeleteVM, "VM deleted")
 }
 
-func controlVM(c *gin.Context, action func(*libvirt.Libvirt, string) error, successMsg string) {
+func controlVM(c *gin.Context, action func(*libvirtclient.Client, string) error, successMsg string) {
 	vmID := c.Param("vm_id")
 	var vm models.VM
 	if err := db.First(&vm, vmID).Error; err != nil {
@@ -64,32 +48,24 @@ func controlVM(c *gin.Context, action func(*libvirt.Libvirt, string) error, succ
 		return
 	}
 
-	host, err := getHostByVM(vm)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	var host models.Host
+	if err := db.First(&host, vm.HostID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Host not found"})
 		return
 	}
 
-	conn, err := libvirt.ConnectTCPTLS(host.Address)
+	conn, err := libvirtclient.Connect("qemu+tcp://" + host.Address + "/system")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	defer conn.Disconnect()
+	defer conn.Close()
 
 	if err := action(conn, vm.Name); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 	} else {
 		c.JSON(http.StatusOK, gin.H{"message": successMsg})
 	}
-}
-
-func getHostByVM(vm models.VM) (models.Host, error) {
-	var host models.Host
-	if err := db.First(&host, vm.HostID).Error; err != nil {
-		return host, err
-	}
-	return host, nil
 }
 
 func CreateVM(c *gin.Context) {
@@ -107,15 +83,15 @@ func CreateVM(c *gin.Context) {
 	}
 	vm.HostID = host.ID
 
-	conn, err := libvirt.ConnectTCPTLS(host.Address)
+	conn, err := libvirtclient.Connect("qemu+tcp://" + host.Address + "/system")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	defer conn.Disconnect()
+	defer conn.Close()
 
 	xml := service.GenerateVMXML(vm.Name, vm.Memory, vm.CPU, "/var/lib/libvirt/images/"+vm.Name+".qcow2", vm.Network)
-	if err := service.CreateVM(conn, xml); err != nil {
+	if err := service.CreateVM(conn.Conn(), xml); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -136,12 +112,12 @@ func PingHost(c *gin.Context) {
 		return
 	}
 
-	conn, err := libvirt.ConnectTCPTLS(host.Address)
+	conn, err := libvirtclient.Connect("qemu+tcp://" + host.Address + "/system")
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "offline", "error": err.Error()})
 		return
 	}
-	defer conn.Disconnect()
+	defer conn.Close()
 
 	c.JSON(http.StatusOK, gin.H{"status": "online"})
 }
