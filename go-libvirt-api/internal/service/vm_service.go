@@ -1,59 +1,51 @@
 package service
 
+/*
+#cgo pkg-config: libvirt
+#include <libvirt/libvirt.h>
+#include <stdlib.h>
+*/
+import "C"
 import (
-	"fmt"
+	"errors"
+	"unsafe"
 
-	"libvirt.org/go/libvirt"
+	"go-libvirt-api/internal/libvirtclient"
 )
 
-func StartVM(conn *libvirt.Connect, vmName string) error {
-	dom, err := conn.LookupDomainByName(vmName)
-	if err != nil {
-		return fmt.Errorf("failed to lookup domain %s: %v", vmName, err)
+func getDomainByName(client *libvirtclient.Client, name string) (*C.virDomainPtr, error) {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+
+	dom := C.virDomainLookupByName(client.Conn(), cName)
+	if dom == nil {
+		return nil, errors.New("failed to find domain")
 	}
-	return dom.Create()
+	return &dom, nil
 }
 
-func StopVM(conn *libvirt.Connect, vmName string) error {
-	dom, err := conn.LookupDomainByName(vmName)
+func StartVM(client *libvirtclient.Client, name string) error {
+	dom, err := getDomainByName(client, name)
 	if err != nil {
-		return fmt.Errorf("failed to lookup domain %s: %v", vmName, err)
+		return err
 	}
-	return dom.Shutdown()
+	defer C.virDomainFree(*dom)
+
+	if C.virDomainCreate(*dom) < 0 {
+		return errors.New("failed to start domain")
+	}
+	return nil
 }
 
-func RebootVM(conn *libvirt.Connect, vmName string) error {
-	dom, err := conn.LookupDomainByName(vmName)
+func StopVM(client *libvirtclient.Client, name string) error {
+	dom, err := getDomainByName(client, name)
 	if err != nil {
-		return fmt.Errorf("failed to lookup domain %s: %v", vmName, err)
+		return err
 	}
-	// no flags are defined, pass 0
-	return dom.Reboot(0)
-}
+	defer C.virDomainFree(*dom)
 
-func PauseVM(conn *libvirt.Connect, vmName string) error {
-	dom, err := conn.LookupDomainByName(vmName)
-	if err != nil {
-		return fmt.Errorf("failed to lookup domain %s: %v", vmName, err)
+	if C.virDomainShutdown(*dom) < 0 {
+		return errors.New("failed to shutdown domain")
 	}
-	return dom.Suspend()
-}
-
-func ResumeVM(conn *libvirt.Connect, vmName string) error {
-	dom, err := conn.LookupDomainByName(vmName)
-	if err != nil {
-		return fmt.Errorf("failed to lookup domain %s: %v", vmName, err)
-	}
-	return dom.Resume()
-}
-
-func DeleteVM(conn *libvirt.Connect, vmName string) error {
-	dom, err := conn.LookupDomainByName(vmName)
-	if err != nil {
-		return fmt.Errorf("failed to lookup domain %s: %v", vmName, err)
-	}
-	if err := dom.Destroy(); err != nil {
-		return fmt.Errorf("failed to destroy domain %s: %v", vmName, err)
-	}
-	return dom.Undefine()
+	return nil
 }

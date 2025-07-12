@@ -1,15 +1,34 @@
 package libvirtclient
 
+/*
+#cgo pkg-config: libvirt
+#include <libvirt/libvirt.h>
+#include <stdlib.h>
+*/
+import "C"
 import (
-	"fmt"
-
-	"libvirt.org/go/libvirt"
+	"errors"
+	"unsafe"
 )
 
-func ConnectLibvirt(uri string) (*libvirt.Connect, error) {
-	conn, err := libvirt.NewConnect(uri)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to libvirt at %s: %v", uri, err)
+type Client struct {
+	conn *C.virConnectPtr
+}
+
+func Connect(uri string) (*Client, error) {
+	cUri := C.CString(uri)
+	defer C.free(unsafe.Pointer(cUri))
+
+	conn := C.virConnectOpen(cUri)
+	if conn == nil {
+		return nil, errors.New("failed to open connection to libvirt")
 	}
-	return conn, nil
+	return &Client{conn: conn}, nil
+}
+
+func (c *Client) Close() {
+	if c.conn != nil {
+		C.virConnectClose(c.conn)
+		c.conn = nil
+	}
 }
