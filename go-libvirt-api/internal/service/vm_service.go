@@ -1,53 +1,88 @@
-//go:build linux
-
 package service
 
-/*
-#cgo pkg-config: libvirt
-#include <libvirt/libvirt.h>
-#include <stdlib.h>
-*/
-import "C"
 import (
-	"errors"
-	"unsafe"
-
+	"fmt"
 	"go-libvirt-api/internal/libvirtclient"
 )
 
-func getDomainByName(client *libvirtclient.Client, name string) (*C.virDomainPtr, error) {
-	cName := C.CString(name)
-	defer C.free(unsafe.Pointer(cName))
-
-	dom := C.virDomainLookupByName(client.Conn(), cName)
-	if dom == nil {
-		return nil, errors.New("failed to find domain")
-	}
-	return &dom, nil
-}
-
 func StartVM(client *libvirtclient.Client, name string) error {
-	dom, err := getDomainByName(client, name)
+	dom, err := client.Conn().LookupDomainByName(name)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to lookup domain %s: %v", name, err)
 	}
-	defer C.virDomainFree(*dom)
+	defer dom.Free()
 
-	if C.virDomainCreate(*dom) < 0 {
-		return errors.New("failed to start domain")
+	if err := dom.Create(); err != nil {
+		return fmt.Errorf("failed to start domain %s: %v", name, err)
 	}
 	return nil
 }
 
 func StopVM(client *libvirtclient.Client, name string) error {
-	dom, err := getDomainByName(client, name)
+	dom, err := client.Conn().LookupDomainByName(name)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to lookup domain %s: %v", name, err)
 	}
-	defer C.virDomainFree(*dom)
+	defer dom.Free()
 
-	if C.virDomainShutdown(*dom) < 0 {
-		return errors.New("failed to shutdown domain")
+	if err := dom.Shutdown(); err != nil {
+		return fmt.Errorf("failed to shutdown domain %s: %v", name, err)
+	}
+	return nil
+}
+
+func RebootVM(client *libvirtclient.Client, name string) error {
+	dom, err := client.Conn().LookupDomainByName(name)
+	if err != nil {
+		return fmt.Errorf("failed to lookup domain %s: %v", name, err)
+	}
+	defer dom.Free()
+
+	// The official libvirt binding doesn't expose DOMAIN_REBOOT_DEFAULT, pass 0
+	if err := dom.Reboot(0); err != nil {
+		return fmt.Errorf("failed to reboot domain %s: %v", name, err)
+	}
+	return nil
+}
+
+func PauseVM(client *libvirtclient.Client, name string) error {
+	dom, err := client.Conn().LookupDomainByName(name)
+	if err != nil {
+		return fmt.Errorf("failed to lookup domain %s: %v", name, err)
+	}
+	defer dom.Free()
+
+	if err := dom.Suspend(); err != nil {
+		return fmt.Errorf("failed to pause domain %s: %v", name, err)
+	}
+	return nil
+}
+
+func ResumeVM(client *libvirtclient.Client, name string) error {
+	dom, err := client.Conn().LookupDomainByName(name)
+	if err != nil {
+		return fmt.Errorf("failed to lookup domain %s: %v", name, err)
+	}
+	defer dom.Free()
+
+	if err := dom.Resume(); err != nil {
+		return fmt.Errorf("failed to resume domain %s: %v", name, err)
+	}
+	return nil
+}
+
+func DeleteVM(client *libvirtclient.Client, name string) error {
+	dom, err := client.Conn().LookupDomainByName(name)
+	if err != nil {
+		return fmt.Errorf("failed to lookup domain %s: %v", name, err)
+	}
+	defer dom.Free()
+
+	if err := dom.Destroy(); err != nil {
+		return fmt.Errorf("failed to destroy domain %s: %v", name, err)
+	}
+	if err := dom.Undefine(); err != nil {
+		return fmt.Errorf("failed to undefine domain %s: %v", name, err)
 	}
 	return nil
 }
