@@ -1,6 +1,7 @@
 package config
 
 import (
+	"go-libvirt-api/internal/models"
 	"log"
 
 	"gorm.io/driver/postgres"
@@ -19,7 +20,7 @@ func InitDB() *gorm.DB {
 	}
 
 	// AutoMigrate
-	db.AutoMigrate(&Host{}, &VM{})
+	db.AutoMigrate(&models.Host{}, &models.VM{})
 
 	return db
 }
