@@ -11,11 +11,7 @@ func StartVM(client *libvirtclient.Client, name string) error {
 		return fmt.Errorf("failed to lookup domain %s: %v", name, err)
 	}
 	defer dom.Free()
-
-	if err := dom.Create(); err != nil {
-		return fmt.Errorf("failed to start domain %s: %v", name, err)
-	}
-	return nil
+	return dom.Create()
 }
 
 func StopVM(client *libvirtclient.Client, name string) error {
@@ -24,11 +20,7 @@ func StopVM(client *libvirtclient.Client, name string) error {
 		return fmt.Errorf("failed to lookup domain %s: %v", name, err)
 	}
 	defer dom.Free()
-
-	if err := dom.Shutdown(); err != nil {
-		return fmt.Errorf("failed to shutdown domain %s: %v", name, err)
-	}
-	return nil
+	return dom.Shutdown()
 }
 
 func RebootVM(client *libvirtclient.Client, name string) error {
@@ -37,12 +29,7 @@ func RebootVM(client *libvirtclient.Client, name string) error {
 		return fmt.Errorf("failed to lookup domain %s: %v", name, err)
 	}
 	defer dom.Free()
-
-	// The official libvirt binding doesn't expose DOMAIN_REBOOT_DEFAULT, pass 0
-	if err := dom.Reboot(0); err != nil {
-		return fmt.Errorf("failed to reboot domain %s: %v", name, err)
-	}
-	return nil
+	return dom.Reboot(0)
 }
 
 func PauseVM(client *libvirtclient.Client, name string) error {
@@ -51,11 +38,7 @@ func PauseVM(client *libvirtclient.Client, name string) error {
 		return fmt.Errorf("failed to lookup domain %s: %v", name, err)
 	}
 	defer dom.Free()
-
-	if err := dom.Suspend(); err != nil {
-		return fmt.Errorf("failed to pause domain %s: %v", name, err)
-	}
-	return nil
+	return dom.Suspend()
 }
 
 func ResumeVM(client *libvirtclient.Client, name string) error {
@@ -64,11 +47,7 @@ func ResumeVM(client *libvirtclient.Client, name string) error {
 		return fmt.Errorf("failed to lookup domain %s: %v", name, err)
 	}
 	defer dom.Free()
-
-	if err := dom.Resume(); err != nil {
-		return fmt.Errorf("failed to resume domain %s: %v", name, err)
-	}
-	return nil
+	return dom.Resume()
 }
 
 func DeleteVM(client *libvirtclient.Client, name string) error {
@@ -77,12 +56,8 @@ func DeleteVM(client *libvirtclient.Client, name string) error {
 		return fmt.Errorf("failed to lookup domain %s: %v", name, err)
 	}
 	defer dom.Free()
-
 	if err := dom.Destroy(); err != nil {
 		return fmt.Errorf("failed to destroy domain %s: %v", name, err)
 	}
-	if err := dom.Undefine(); err != nil {
-		return fmt.Errorf("failed to undefine domain %s: %v", name, err)
-	}
-	return nil
+	return dom.Undefine()
 }
