@@ -11,8 +11,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var db *gorm.DB
-
 func InitHandler(database *gorm.DB) {
 	db = database
 }
