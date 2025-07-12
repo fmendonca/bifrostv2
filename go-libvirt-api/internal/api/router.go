@@ -2,7 +2,10 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
+
+var db *gorm.DB
 
 func SetupRouter() *gin.Engine {
 	r := gin.Default()
@@ -11,10 +14,13 @@ func SetupRouter() *gin.Engine {
 }
 
 func SetupRoutes(r *gin.Engine) {
+	// Public route
 	r.POST("/login", Login)
 
+	// Protected routes (require JWT)
 	auth := r.Group("/")
 	auth.Use(JWTAuthMiddleware())
+
 	auth.POST("/hosts", AddHost)
 	auth.GET("/hosts", ListHosts)
 	auth.GET("/hosts/:id/ping", PingHost)

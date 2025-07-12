@@ -1,10 +1,11 @@
 package api
 
 import (
+	"net/http"
+
 	"go-libvirt-api/internal/libvirtclient"
 	"go-libvirt-api/internal/models"
 	"go-libvirt-api/internal/service"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -104,6 +105,38 @@ func CreateVM(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "VM created", "vm": vm})
 }
 
+func AddHost(c *gin.Context) {
+	var host models.Host
+	if err := c.ShouldBindJSON(&host); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := db.Create(&host).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Host added", "host": host})
+}
+
+func ListHosts(c *gin.Context) {
+	var hosts []models.Host
+	if err := db.Find(&hosts).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, hosts)
+}
+
+func ListVMs(c *gin.Context) {
+	hostID := c.Param("id")
+	var vms []models.VM
+	if err := db.Where("host_id = ?", hostID).Find(&vms).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, vms)
+}
+
 func PingHost(c *gin.Context) {
 	hostID := c.Param("id")
 	var host models.Host
@@ -120,4 +153,46 @@ func PingHost(c *gin.Context) {
 	defer conn.Close()
 
 	c.JSON(http.StatusOK, gin.H{"status": "online"})
+}
+
+func Login(c *gin.Context) {
+	var credentials struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := c.ShouldBindJSON(&credentials); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	if credentials.Username != "admin" || credentials.Password != "admin" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		return
+	}
+
+	token, err := service.GenerateJWT(credentials.Username)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"token": token})
+}
+
+func JWTAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tokenString := c.GetHeader("Authorization")
+		if tokenString == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing token"})
+			return
+		}
+
+		_, err := service.ParseJWT(tokenString)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
+		}
+
+		c.Next()
+	}
 }
