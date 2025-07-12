@@ -2,6 +2,8 @@ FROM golang:1.24-alpine as build
 WORKDIR /app
 COPY go.mod ./
 COPY go.sum ./
+ENV CGO_ENABLED=1
+RUN apk add --no-cache libvirt-dev pkgconfig gcc musl-dev
 RUN go mod download
 COPY . .
 RUN go build -o server cmd/main.go
