@@ -3,6 +3,8 @@ FROM registry.access.redhat.com/ubi9/nodejs-18 AS builder
 
 WORKDIR /app
 
+USER 0
+
 # Copia package.json e package-lock.json
 COPY package.json ./
 
