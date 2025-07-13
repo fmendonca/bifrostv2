@@ -7,7 +7,7 @@ import requests
 import logging
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, UTC
 import sched
 import xml.etree.ElementTree as ET
 
@@ -61,6 +61,7 @@ def extrair_info_vm(dom):
         cpu = info[3]
         memoria = info[1]
 
+        # Parse XML for disk paths
         xml_desc = dom.XMLDesc()
         root = ET.fromstring(xml_desc)
         discos = []
@@ -78,7 +79,7 @@ def extrair_info_vm(dom):
                 interfaces.append({
                     "name": iface_name,
                     "mac": iface_data.get('hwaddr'),
-                    "addrs": [addr['addr'] for addr in iface_data.get('addrs', [])]
+                    "addrs": [addr['addr'] for addr in iface_data.get('addrs') or []]
                 })
         except libvirt.libvirtError:
             pass
@@ -123,7 +124,7 @@ def tarefa_principal():
             return
         dados_vms = coletar_dados_vm(conn)
         conn.close()
-        json_payload = {"timestamp": datetime.utcnow().isoformat(), "vms": dados_vms}
+        json_payload = {"timestamp": datetime.now(UTC).isoformat(), "vms": dados_vms}
         logging.info("Coleta concluída, enviando para API...")
         enviar_para_api(json_payload)
     except libvirt.libvirtError as e:

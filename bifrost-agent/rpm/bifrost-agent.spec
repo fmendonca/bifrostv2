@@ -5,7 +5,7 @@ Summary:        Bifrost Agent Python collector
 
 License:        MIT
 URL:            https://github.com/fmendonca/bifrostv2
-Source0:        bifrost-agent-1.0.tar.gz
+Source0:        %{name}-%{version}.tar.gz
 
 BuildArch:      noarch
 Requires:       python3, libvirt
@@ -14,8 +14,10 @@ Requires:       python3, libvirt
 Python agent that collects VM data from Libvirt and sends it to a remote Bifrost API.
 
 %prep
+%autosetup
 
 %build
+# Nothing to build
 
 %install
 mkdir -p %{buildroot}/opt/bifrost-agent
@@ -28,20 +30,21 @@ install -m 0644 bifrost-agent.service %{buildroot}/etc/systemd/system/bifrost-ag
 install -m 0644 bifrost-agent.logrotate %{buildroot}/etc/logrotate.d/bifrost-agent
 
 %post
-/usr/bin/systemctl daemon-reload
-/usr/bin/systemctl enable --now bifrost-agent
+%systemd_post bifrost-agent.service
 
 %preun
-if [ $1 -eq 0 ]; then
-  /usr/bin/systemctl disable --now bifrost-agent
-fi
+%systemd_preun bifrost-agent.service
+
+%postun
+%systemd_postun_with_restart bifrost-agent.service
 
 %files
+%license
 /opt/bifrost-agent/bifrost-agent.py
 /etc/systemd/system/bifrost-agent.service
 /etc/logrotate.d/bifrost-agent
-/var/log/bifrost
+%dir /var/log/bifrost
 
 %changelog
-* Tue Jul 16 2025 You filipecm@gmail.com - 1.0-1
+* Tue Jul 16 2024 Filipe Mendonça <filipecm@gmail.com> - 1.0-1
 - Initial RPM package
