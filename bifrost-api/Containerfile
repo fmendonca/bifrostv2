@@ -11,7 +11,7 @@ RUN go mod download
 COPY . .
 
 # Compila a aplicação Go
-RUN go build -o bifrost-api main.go
+RUN go build -o bifrost-api .
 
 # Stage 2: Runtime
 FROM registry.access.redhat.com/ubi9-minimal
