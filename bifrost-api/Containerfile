@@ -1,0 +1,43 @@
+# Stage 1: Build
+FROM registry.access.redhat.com/ubi9/go-toolset AS builder
+
+WORKDIR /app
+
+# Copia os arquivos do projeto
+COPY go.mod .
+COPY go.sum .
+RUN go mod download
+
+COPY . .
+
+# Compila a aplicação Go
+RUN go build -o bifrost-api main.go
+
+# Stage 2: Runtime
+FROM registry.access.redhat.com/ubi9-minimal
+
+# Cria diretório e usuário não-root
+RUN microdnf install -y shadow-utils && \
+    useradd --uid 1001 --create-home appuser
+
+WORKDIR /app
+
+# Copia o binário do builder
+COPY --from=builder /app/bifrost-api .
+
+# Define variáveis padrão (podem ser sobrescritas em runtime)
+ENV DB_HOST=localhost \
+    DB_PORT=5432 \
+    DB_USER=postgres \
+    DB_PASSWORD=postgres \
+    DB_NAME=bifrost \
+    DB_SSLMODE=disable
+
+# Expõe a porta da API
+EXPOSE 8080
+
+# Muda para usuário não-root
+USER appuser
+
+# Comando de entrada
+ENTRYPOINT ["./bifrost-api"]
