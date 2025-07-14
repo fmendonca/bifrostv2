@@ -155,3 +155,12 @@ func GetAllVMs() ([]VM, error) {
 	}
 	return vms, nil
 }
+
+func UpdateVMState(uuid string, state string) error {
+	_, err := DB.Exec(`
+        UPDATE vms 
+        SET state = $1, timestamp = NOW()
+        WHERE uuid = $2
+    `, state, uuid)
+	return err
+}

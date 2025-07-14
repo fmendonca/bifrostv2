@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -13,14 +14,8 @@ type Payload struct {
 	VMs       []VM   `json:"vms"`
 }
 
+// Roteador principal
 func VMsHandler(w http.ResponseWriter, r *http.Request) {
-	enableCORS(&w) // <- adiciona CORS antes de tudo
-
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	start := time.Now()
 	log.Printf("Incoming request: %s %s", r.Method, r.URL.Path)
 
@@ -38,6 +33,7 @@ func VMsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Handled %s %s in %v", r.Method, r.URL.Path, duration)
 }
 
+// POST /api/v1/vms → atualiza inventário
 func handlePostVMs(w http.ResponseWriter, r *http.Request) {
 	var payload Payload
 	err := json.NewDecoder(r.Body).Decode(&payload)
@@ -64,6 +60,7 @@ func handlePostVMs(w http.ResponseWriter, r *http.Request) {
 	log.Printf("POST /api/v1/vms: Processed %d VMs", count)
 }
 
+// GET /api/v1/vms → lista VMs
 func handleGetVMs(w http.ResponseWriter, r *http.Request) {
 	vms, err := GetAllVMs()
 	if err != nil {
@@ -83,9 +80,49 @@ func handleGetVMs(w http.ResponseWriter, r *http.Request) {
 	log.Printf("GET /api/v1/vms: Returned %d VMs", len(vms))
 }
 
-// Função utilitária para habilitar CORS
-func enableCORS(w *http.ResponseWriter) {
-	(*w).Header().Set("Access-Control-Allow-Origin", "*")
-	(*w).Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-	(*w).Header().Set("Access-Control-Allow-Headers", "Content-Type")
+// POST /api/v1/vms/:uuid/start → atualiza status no banco
+func StartVMHandler(w http.ResponseWriter, r *http.Request) {
+	uuid := extractUUID(r.URL.Path, "/start")
+	if uuid == "" {
+		http.Error(w, "Invalid UUID", http.StatusBadRequest)
+		return
+	}
+
+	err := UpdateVMState(uuid, "running")
+	if err != nil {
+		log.Printf("Failed to start VM %s: %v", uuid, err)
+		http.Error(w, "Failed to start VM", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Started VM %s", uuid)
+	fmt.Fprintf(w, "VM %s started", uuid)
+}
+
+// POST /api/v1/vms/:uuid/stop → atualiza status no banco
+func StopVMHandler(w http.ResponseWriter, r *http.Request) {
+	uuid := extractUUID(r.URL.Path, "/stop")
+	if uuid == "" {
+		http.Error(w, "Invalid UUID", http.StatusBadRequest)
+		return
+	}
+
+	err := UpdateVMState(uuid, "stopped")
+	if err != nil {
+		log.Printf("Failed to stop VM %s: %v", uuid, err)
+		http.Error(w, "Failed to stop VM", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Stopped VM %s", uuid)
+	fmt.Fprintf(w, "VM %s stopped", uuid)
+}
+
+// Helper para extrair UUID da URL
+func extractUUID(path, suffix string) string {
+	if !strings.HasSuffix(path, suffix) {
+		return ""
+	}
+	uuid := strings.TrimSuffix(strings.TrimPrefix(path, "/api/v1/vms/"), suffix)
+	return strings.Trim(uuid, "/")
 }

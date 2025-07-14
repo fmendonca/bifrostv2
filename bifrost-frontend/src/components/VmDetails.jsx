@@ -2,27 +2,30 @@ import React from 'react';
 
 function VmDetails({ vm }) {
   return (
-    <div className="w-full md:w-1/2 bg-white rounded-lg shadow p-4">
-      <h2 className="text-xl font-semibold mb-2">Detalhes da VM: {vm.name}</h2>
-      <p><strong>UUID:</strong> {vm.uuid}</p>
-      <p><strong>Estado:</strong> {vm.state}</p>
-      <p><strong>CPU:</strong> {vm.cpu_allocation}</p>
-      <p><strong>Memória:</strong> {vm.memory_allocation} MB</p>
-      <div>
-        <strong>Discos:</strong>
-        <ul className="list-disc ml-6">
-          {vm.disks.map((d, i) => (
-            <li key={i}>{d.device}: {d.path}</li>
-          ))}
-        </ul>
+    <div className="w-full md:w-1/2 p-4 bg-white rounded shadow">
+      <h2 className="text-xl font-semibold mb-2">Detalhes da VM</h2>
+      <p><span className="font-semibold">Nome:</span> {vm.name}</p>
+      <p><span className="font-semibold">UUID:</span> {vm.uuid}</p>
+      <p><span className="font-semibold">Estado:</span> {vm.state}</p>
+      <p><span className="font-semibold">CPU:</span> {vm.cpu_allocation}</p>
+      <p><span className="font-semibold">Memória (MB):</span> {vm.memory_allocation}</p>
+      <div className="mt-2">
+        <p className="font-semibold">Discos:</p>
+        <pre className="bg-gray-100 p-2 rounded text-sm overflow-x-auto">
+          {JSON.stringify(JSON.parse(vm.disks), null, 2)}
+        </pre>
       </div>
-      <div>
-        <strong>Interfaces:</strong>
-        <ul className="list-disc ml-6">
-          {vm.interfaces.map((iface, i) => (
-            <li key={i}>{iface.name} ({iface.mac}) — {iface.addrs.join(', ')}</li>
-          ))}
-        </ul>
+      <div className="mt-2">
+        <p className="font-semibold">Interfaces:</p>
+        <pre className="bg-gray-100 p-2 rounded text-sm overflow-x-auto">
+          {JSON.stringify(JSON.parse(vm.interfaces), null, 2)}
+        </pre>
+      </div>
+      <div className="mt-2">
+        <p className="font-semibold">Metadata:</p>
+        <pre className="bg-gray-100 p-2 rounded text-sm overflow-x-auto">
+          {JSON.stringify(JSON.parse(vm.metadata), null, 2)}
+        </pre>
       </div>
     </div>
   );
