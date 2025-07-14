@@ -36,7 +36,7 @@ RUN mkdir -p ${APP_ROOT}
 COPY --from=builder /app/build/ ${APP_ROOT}/
 
 # Corrige dono e permissões
-RUN chown -R nginx:nginx ${APP_ROOT} && \
+RUN chown -R nginx:nginx ${APP_ROOT} /var/lib/nginx /var/log/nginx && \
     find ${APP_ROOT} -type f -exec chmod 644 {} \; && \
     find ${APP_ROOT} -type d -exec chmod 755 {} \;
 
