@@ -23,8 +23,6 @@ RUN echo "Building with REACT_APP_API_URL=${REACT_APP_API_URL}" && \
 # Stage 2: nginx minimal para servir frontend
 FROM registry.access.redhat.com/ubi9/nginx-120
 
-USER 0
-
 # Limpa html padrão
 RUN rm -rf /usr/share/nginx/html/*
 
