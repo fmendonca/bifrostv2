@@ -4,46 +4,34 @@ FROM registry.access.redhat.com/ubi9/nodejs-18 AS builder
 WORKDIR /app
 USER 0
 
-# Recebe argumento do build
 ARG REACT_APP_API_URL
 
-# Copia package.json e package-lock.json
 COPY package.json package-lock.json ./
-
-# Instala dependências
 RUN npm install
 
-# Copia código-fonte restante
 COPY . .
 
-# Faz build com variável explícita
 RUN echo "Building with REACT_APP_API_URL=${REACT_APP_API_URL}" && \
     REACT_APP_API_URL=${REACT_APP_API_URL} npm run build
 
-# Stage 2: nginx minimal para servir frontend
+# Stage 2: nginx minimal
 FROM registry.access.redhat.com/ubi9/nginx-120
 
-# ⚠️ Precisamos explicitamente de root no build stage final para criar diretórios e ajustar permissões
 USER 0
 
-# Define novo local alternativo
-ENV APP_ROOT=/opt/app-root/html
-
-# Cria diretório alternativo
-RUN mkdir -p ${APP_ROOT}
+# Limpa diretório padrão nginx
+RUN rm -rf /usr/share/nginx/html/*
 
 # Copia build gerado
-COPY --from=builder /app/build/ ${APP_ROOT}/
+COPY --from=builder /app/build/ /usr/share/nginx/html/
 
-# Corrige dono e permissões
-RUN chown -R nginx:nginx ${APP_ROOT} /var/lib/nginx /var/log/nginx /run && \
-    find ${APP_ROOT} -type f -exec chmod 644 {} \; && \
-    find ${APP_ROOT} -type d -exec chmod 755 {} \;
+# Corrige permissões apenas no html padrão e dirs internos
+RUN chown -R nginx:nginx /usr/share/nginx/html /var/lib/nginx /var/log/nginx /run && \
+    find /usr/share/nginx/html -type f -exec chmod 644 {} \; && \
+    find /usr/share/nginx/html -type d -exec chmod 755 {} \;
 
-# Copia configuração nginx customizada
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# ⚠️ Agora removemos explicitamente USER root para rodar nginx como padrão (nginx user)
 USER nginx
 
 EXPOSE 8080
