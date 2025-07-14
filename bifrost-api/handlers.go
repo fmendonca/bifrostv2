@@ -14,6 +14,13 @@ type Payload struct {
 }
 
 func VMsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(&w) // <- adiciona CORS antes de tudo
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	start := time.Now()
 	log.Printf("Incoming request: %s %s", r.Method, r.URL.Path)
 
@@ -74,4 +81,11 @@ func handleGetVMs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("GET /api/v1/vms: Returned %d VMs", len(vms))
+}
+
+// Função utilitária para habilitar CORS
+func enableCORS(w *http.ResponseWriter) {
+	(*w).Header().Set("Access-Control-Allow-Origin", "*")
+	(*w).Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	(*w).Header().Set("Access-Control-Allow-Headers", "Content-Type")
 }
