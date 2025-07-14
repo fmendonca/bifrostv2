@@ -9,7 +9,7 @@ API_DIR="./bifrost-api"
 FRONT_DIR="./bifrost-frontend"
 API_PORT="8080"
 FRONT_PORT="3000"
-API_URL="http://localhost:${API_PORT}"
+API_URL="http://192.168.86.129:${API_PORT}"
 
 echo "🔨 Building Bifrost API..."
 cd $API_DIR
