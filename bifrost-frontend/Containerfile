@@ -2,8 +2,6 @@
 FROM registry.access.redhat.com/ubi9/nodejs-18 AS builder
 
 WORKDIR /app
-
-# Mantemos USER 0 no build stage para permitir npm install
 USER 0
 
 # Recebe argumento do build
@@ -25,26 +23,29 @@ RUN echo "Building with REACT_APP_API_URL=${REACT_APP_API_URL}" && \
 # Stage 2: nginx minimal para servir frontend
 FROM registry.access.redhat.com/ubi9/nginx-120
 
-# Define novo local para os arquivos (fora do padrão nginx)
+# ⚠️ Precisamos explicitamente de root no build stage final para criar diretórios e ajustar permissões
+USER 0
+
+# Define novo local alternativo
 ENV APP_ROOT=/opt/app-root/html
 
 # Cria diretório alternativo
 RUN mkdir -p ${APP_ROOT}
 
-# Copia build gerado do React
+# Copia build gerado
 COPY --from=builder /app/build/ ${APP_ROOT}/
 
-# Corrige dono e permissões para o usuário nginx
+# Corrige dono e permissões
 RUN chown -R nginx:nginx ${APP_ROOT} && \
     find ${APP_ROOT} -type f -exec chmod 644 {} \; && \
     find ${APP_ROOT} -type d -exec chmod 755 {} \;
 
-# Copia configuração customizada do nginx
+# Copia configuração nginx customizada
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# ⚠️ Aqui NÃO usamos USER 0 → nginx roda com usuário padrão (nginx)
-# Expondo porta padrão
+# ⚠️ Agora removemos explicitamente USER root para rodar nginx como padrão (nginx user)
+USER nginx
+
 EXPOSE 8080
 
-# Start nginx em foreground
 CMD ["nginx", "-g", "daemon off;"]
