@@ -4,6 +4,10 @@ FROM registry.access.redhat.com/ubi9/nodejs-18 AS builder
 WORKDIR /app
 USER 0
 
+# Recebe o argumento de build
+ARG REACT_APP_API_URL
+ENV REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:8080}
+
 # Copia package.json e instala dependências
 COPY package.json package-lock.json ./
 RUN npm install
@@ -12,7 +16,7 @@ RUN npm install
 COPY . .
 
 # Gera build de produção, usando API configurável via env
-RUN REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:8080} npm run build
+RUN echo "Building with REACT_APP_API_URL=${REACT_APP_API_URL}" && npm run build
 
 # Debug opcional: listar build gerado
 RUN ls -lh build/
@@ -31,11 +35,9 @@ COPY --from=builder /app/build/ /usr/share/nginx/html/
 # Copia configuração nginx customizada
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Corrige permissões (caso necessário)
+# Corrige permissões
 RUN chmod -R 755 /usr/share/nginx/html
 
-# Expõe porta padrão nginx
 EXPOSE 8080
 
-# Start nginx em foreground
 CMD ["nginx", "-g", "daemon off;"]
