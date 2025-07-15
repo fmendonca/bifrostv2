@@ -21,15 +21,23 @@ RUN dnf install -y \
     dnf clean all && \
     rm -f erlang-solutions.rpm rabbitmq.rpm
 
-# Cria usuário
+# Criar usuário rabbitmq
 RUN useradd -r -m rabbitmq
 
 # Expor portas padrão
 EXPOSE 5672 15672
 
-# Volumes
+# Volumes para persistência
 VOLUME ["/var/lib/rabbitmq", "/etc/rabbitmq"]
 
-# Usuário e comando padrão
+# Variáveis padrão (podem ser sobrescritas no docker run/podman run)
+ENV RABBITMQ_DEFAULT_USER=admin \
+    RABBITMQ_DEFAULT_PASS=admin
+
+# Copiar script de inicialização customizado
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Definir usuário e comando
 USER rabbitmq
-CMD ["/usr/sbin/rabbitmq-server"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
