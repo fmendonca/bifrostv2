@@ -4,8 +4,8 @@ set -e
 
 API_CONTAINER="bifrost-api"
 FRONT_CONTAINER="bifrost-frontend"
-API_IMAGE="bifrost-api:latest"
-FRONT_IMAGE="bifrost-frontend:latest"
+API_IMAGE="bifrost-api:0.3"
+FRONT_IMAGE="bifrost-frontend:0.3"
 API_PORT="8080"
 FRONT_PORT="3000"
 
@@ -20,7 +20,7 @@ podman run -d --name $API_CONTAINER -p $API_PORT:8080 $API_IMAGE
 
 # 🚀 Start Frontend container
 echo "🚀 Starting Bifrost Frontend on port $FRONT_PORT..."
-podman run -d --name $FRONT_CONTAINER -p $FRONT_PORT:8080 $FRONT_IMAGE
+podman run -d --name $FRONT_CONTAINER --env-file env -p $FRONT_PORT:8080 $FRONT_IMAGE
 
 # ✅ Status
 echo "✅ Bifrost API running at: http://localhost:$API_PORT"
