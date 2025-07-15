@@ -16,11 +16,11 @@ podman rm -f $FRONT_CONTAINER || true
 
 # 🚀 Start API container
 echo "🚀 Starting Bifrost API on port $API_PORT..."
-podman run -d --name $API_CONTAINER -p $API_PORT:8080 $API_IMAGE
+podman run -d --name $API_CONTAINER --env-file bifrost-api/env -p $API_PORT:8080 $API_IMAGE
 
 # 🚀 Start Frontend container
 echo "🚀 Starting Bifrost Frontend on port $FRONT_PORT..."
-podman run -d --name $FRONT_CONTAINER --env-file env -p $FRONT_PORT:8080 $FRONT_IMAGE
+podman run -d --name $FRONT_CONTAINER -p $FRONT_PORT:8080 $FRONT_IMAGE
 
 # ✅ Status
 echo "✅ Bifrost API running at: http://localhost:$API_PORT"
