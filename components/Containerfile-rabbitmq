@@ -7,7 +7,6 @@ ENV RABBITMQ_VERSION=4.1.2 \
 
 # Instalar dependências e RabbitMQ
 RUN dnf install -y \
-        curl \
         gnupg \
         hostname \
         socat \
