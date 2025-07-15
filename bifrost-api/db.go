@@ -23,6 +23,7 @@ type VM struct {
 	Interfaces       json.RawMessage `json:"interfaces"`
 	Metadata         json.RawMessage `json:"metadata"`
 	Timestamp        string          `json:"timestamp"`
+	PendingAction    string          `json:"pending_action,omitempty"`
 }
 
 func InitDB() {
@@ -95,7 +96,8 @@ func createTableIfNotExists() error {
         disks JSONB,
         interfaces JSONB,
         metadata JSONB,
-        timestamp TIMESTAMP WITH TIME ZONE
+        timestamp TIMESTAMP WITH TIME ZONE,
+        pending_action TEXT
     );`
 	_, err := DB.Exec(query)
 	return err
@@ -104,8 +106,8 @@ func createTableIfNotExists() error {
 func InsertOrUpdateVM(vm VM) (string, error) {
 	res, err := DB.Exec(`
         INSERT INTO vms 
-        (name, uuid, state, cpu_allocation, memory_allocation, disks, interfaces, metadata, timestamp)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        (name, uuid, state, cpu_allocation, memory_allocation, disks, interfaces, metadata, timestamp, pending_action)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         ON CONFLICT (uuid) DO UPDATE SET 
             name = EXCLUDED.name,
             state = EXCLUDED.state,
@@ -116,7 +118,7 @@ func InsertOrUpdateVM(vm VM) (string, error) {
             metadata = EXCLUDED.metadata,
             timestamp = EXCLUDED.timestamp
     `, vm.Name, vm.UUID, vm.State, vm.CPUAllocation, vm.MemoryAllocation,
-		vm.Disks, vm.Interfaces, vm.Metadata, vm.Timestamp)
+		vm.Disks, vm.Interfaces, vm.Metadata, vm.Timestamp, vm.PendingAction)
 
 	if err != nil {
 		return "", err
@@ -135,7 +137,7 @@ func InsertOrUpdateVM(vm VM) (string, error) {
 
 func GetAllVMs() ([]VM, error) {
 	rows, err := DB.Query(`
-        SELECT name, uuid, state, cpu_allocation, memory_allocation, disks, interfaces, metadata, timestamp 
+        SELECT name, uuid, state, cpu_allocation, memory_allocation, disks, interfaces, metadata, timestamp, pending_action
         FROM vms ORDER BY timestamp DESC LIMIT 100
     `)
 	if err != nil {
@@ -147,7 +149,7 @@ func GetAllVMs() ([]VM, error) {
 	for rows.Next() {
 		var vm VM
 		err := rows.Scan(&vm.Name, &vm.UUID, &vm.State, &vm.CPUAllocation, &vm.MemoryAllocation,
-			&vm.Disks, &vm.Interfaces, &vm.Metadata, &vm.Timestamp)
+			&vm.Disks, &vm.Interfaces, &vm.Metadata, &vm.Timestamp, &vm.PendingAction)
 		if err != nil {
 			return nil, err
 		}
@@ -156,11 +158,46 @@ func GetAllVMs() ([]VM, error) {
 	return vms, nil
 }
 
+// ✅ Busca apenas VMs com pending_action definido
+func GetPendingActions() ([]VM, error) {
+	rows, err := DB.Query(`
+        SELECT name, uuid, state, cpu_allocation, memory_allocation, disks, interfaces, metadata, timestamp, pending_action
+        FROM vms WHERE pending_action IS NOT NULL
+    `)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var vms []VM
+	for rows.Next() {
+		var vm VM
+		err := rows.Scan(&vm.Name, &vm.UUID, &vm.State, &vm.CPUAllocation, &vm.MemoryAllocation,
+			&vm.Disks, &vm.Interfaces, &vm.Metadata, &vm.Timestamp, &vm.PendingAction)
+		if err != nil {
+			return nil, err
+		}
+		vms = append(vms, vm)
+	}
+	return vms, nil
+}
+
+// ✅ Atualiza estado + limpa pending_action
 func UpdateVMState(uuid string, state string) error {
 	_, err := DB.Exec(`
         UPDATE vms 
-        SET state = $1, timestamp = NOW()
+        SET state = $1, pending_action = NULL, timestamp = NOW()
         WHERE uuid = $2
     `, state, uuid)
+	return err
+}
+
+// ✅ Marca pending_action (ex.: start, stop)
+func MarkPendingAction(uuid string, action string) error {
+	_, err := DB.Exec(`
+        UPDATE vms 
+        SET pending_action = $1
+        WHERE uuid = $2
+    `, action, uuid)
 	return err
 }
