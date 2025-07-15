@@ -1,143 +1,127 @@
-#!/usr/bin/env python3
-
 import libvirt
 import json
-import time
 import requests
-import logging
-import sys
-import os
-from datetime import datetime, UTC
 import sched
-import xml.etree.ElementTree as ET
+import time
+import logging
+import os
+from datetime import datetime
 
-API_ENDPOINT = os.getenv("API_ENDPOINT", "http://localhost:8080/api/v1/vms")
-LIBVIRT_URI = "qemu:///system"
-INTERVALO_MINUTOS = 5
-LOG_DIR = "/var/log/bifrost"
-LOG_FILE = os.path.join(LOG_DIR, "bifrost-agent.log")
+# Configuração de log
+LOG_FILE = '/var/log/bifrost/bifrost-agent.log'
+os.makedirs('/var/log/bifrost', exist_ok=True)
+logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
+                    format='%(asctime)s [%(levelname)s] %(message)s')
+logger = logging.getLogger()
 
-# Garante que o diretório de log existe
-os.makedirs(LOG_DIR, exist_ok=True)
+# Configuração do scheduler
+scheduler = sched.scheduler(time.time, time.sleep)
 
-# Setup de logging: stdout + arquivo
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler(LOG_FILE)
-    ]
-)
+# Endpoint da API (lido de variável ambiente)
+API_URL = os.getenv('BIFROST_API_URL', 'http://localhost:8080/api/v1/vms')
 
 def coletar_dados_vm(conn):
-    dados_vms = []
-    try:
-        for id in conn.listDomainsID():
-            dom = conn.lookupByID(id)
-            dados_vms.append(extrair_info_vm(dom))
-        for nome in conn.listDefinedDomains():
-            dom = conn.lookupByName(nome)
-            dados_vms.append(extrair_info_vm(dom))
-    except libvirt.libvirtError as e:
-        logging.error(f"Erro ao coletar dados das VMs: {e}")
-    return dados_vms
-
-def extrair_info_vm(dom):
-    try:
-        info = dom.info()
-        estado_map = {
-            libvirt.VIR_DOMAIN_NOSTATE: "no state",
-            libvirt.VIR_DOMAIN_RUNNING: "running",
-            libvirt.VIR_DOMAIN_BLOCKED: "blocked",
-            libvirt.VIR_DOMAIN_PAUSED: "paused",
-            libvirt.VIR_DOMAIN_SHUTDOWN: "shutdown",
-            libvirt.VIR_DOMAIN_SHUTOFF: "shutoff",
-            libvirt.VIR_DOMAIN_CRASHED: "crashed",
-            libvirt.VIR_DOMAIN_PMSUSPENDED: "pmsuspended",
-        }
-
-        estado = estado_map.get(info[0], "unknown")
-        cpu = info[3]
-        memoria = info[1]
-
-        # Parse XML for disk paths
-        xml_desc = dom.XMLDesc()
-        root = ET.fromstring(xml_desc)
-        discos = []
-        for disk in root.findall("./devices/disk"):
-            device = disk.find("target").get("dev")
-            source = disk.find("source")
-            path = source.get("file") if source is not None else None
-            if path:
-                discos.append({"device": device, "path": path})
-
-        interfaces = []
-        try:
-            ifaces = dom.interfaceAddresses(libvirt.VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_AGENT, 0)
-            for iface_name, iface_data in ifaces.items():
-                interfaces.append({
-                    "name": iface_name,
-                    "mac": iface_data.get('hwaddr'),
-                    "addrs": [addr['addr'] for addr in iface_data.get('addrs') or []]
-                })
-        except libvirt.libvirtError:
-            pass
-
-        try:
-            metadados = dom.metadata(libvirt.VIR_DOMAIN_METADATA_ELEMENT, None, 0)
-        except libvirt.libvirtError:
-            metadados = {}
-
-        return {
+    vms = []
+    for dom in conn.listAllDomains():
+        vm_info = {
             "name": dom.name(),
             "uuid": dom.UUIDString(),
-            "state": estado,
-            "cpu_allocation": cpu,
-            "memory_allocation": memoria,
-            "disks": discos,
-            "interfaces": interfaces,
-            "metadata": metadados
+            "state": dom.state()[0],
+            "cpu_allocation": dom.maxVcpus(),
+            "memory_allocation": dom.maxMemory(),
+            "disks": [],
+            "interfaces": [],
+            "metadata": {},
         }
 
-    except libvirt.libvirtError as e:
-        logging.error(f"Erro ao extrair info da VM {dom.name()}: {e}")
-        return {"name": dom.name(), "error": str(e)}
+        # Discos
+        for disk in dom.XMLDesc().split('<disk type=')[1:]:
+            disk_path = disk.split('file=')[1].split('\'')[1]
+            vm_info["disks"].append({"path": disk_path})
 
-def enviar_para_api(payload):
+        # Interfaces
+        for iface in dom.interfaceAddresses(libvirt.VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE, 0).values():
+            vm_info["interfaces"].append({
+                "mac": iface.get('hwaddr'),
+                "addrs": iface.get('addrs', [])
+            })
+
+        # Metadata
+        vm_info["metadata"] = dom.metadata(libvirt.VIR_DOMAIN_METADATA_ELEMENT, None, 0)
+
+        vms.append(vm_info)
+    return vms
+
+def enviar_dados_api(vms):
+    payload = {
+        "timestamp": datetime.now().astimezone().isoformat(),
+        "vms": vms
+    }
     try:
-        headers = {'Content-Type': 'application/json'}
-        response = requests.post(API_ENDPOINT, json=payload, headers=headers)
-        if response.ok:
-            logging.info(f"Dados enviados com sucesso para {API_ENDPOINT}. Código {response.status_code}")
+        resp = requests.post(API_URL, json=payload)
+        if resp.status_code == 200:
+            logger.info(f"Inventário enviado com sucesso.")
         else:
-            logging.error(f"Falha ao enviar dados para {API_ENDPOINT}. Código {response.status_code} Resposta: {response.text}")
-    except requests.RequestException as e:
-        logging.error(f"Erro de comunicação com API {API_ENDPOINT}: {e}")
+            logger.error(f"Falha ao enviar inventário: {resp.status_code}")
+    except Exception as e:
+        logger.error(f"Erro ao enviar inventário: {e}")
+
+def executar_acoes_pendentes(conn):
+    try:
+        resp = requests.get(f"{API_URL}?pending_action=1")
+        resp.raise_for_status()
+        vms_pendentes = resp.json()
+    except Exception as e:
+        logger.error(f"Erro ao buscar ações pendentes: {e}")
+        return
+
+    for vm in vms_pendentes:
+        try:
+            dom = conn.lookupByUUIDString(vm['uuid'])
+            action = vm.get('pending_action')
+            if action == "start":
+                if dom.isActive() == 0:
+                    dom.create()
+                    logger.info(f"VM {vm['name']} iniciada com sucesso.")
+                else:
+                    logger.info(f"VM {vm['name']} já está em execução.")
+                requests.post(f"{API_URL}/{vm['uuid']}/start")
+            elif action == "stop":
+                if dom.isActive() == 1:
+                    dom.shutdown()
+                    logger.info(f"VM {vm['name']} desligada com sucesso.")
+                else:
+                    logger.info(f"VM {vm['name']} já está desligada.")
+                requests.post(f"{API_URL}/{vm['uuid']}/stop")
+        except Exception as e:
+            logger.error(f"Erro ao processar ação '{action}' para VM {vm['name']}: {e}")
 
 def tarefa_principal():
-    logging.info(f"Iniciando coleta de dados das VMs... Endpoint configurado: {API_ENDPOINT}")
     try:
-        conn = libvirt.open(LIBVIRT_URI)
+        conn = libvirt.open(None)
         if conn is None:
-            logging.error("Falha ao conectar ao Libvirt.")
+            logger.error("Não foi possível conectar ao libvirt.")
             return
-        dados_vms = coletar_dados_vm(conn)
-        conn.close()
-        json_payload = {"timestamp": datetime.now(UTC).isoformat(), "vms": dados_vms}
-        logging.info("Coleta concluída, enviando para API...")
-        enviar_para_api(json_payload)
-    except libvirt.libvirtError as e:
-        logging.error(f"Erro geral do Libvirt: {e}")
+
+        logger.info("Coletando dados das VMs...")
+        vms = coletar_dados_vm(conn)
+        enviar_dados_api(vms)
+        executar_acoes_pendentes(conn)
+
+    except Exception as e:
+        logger.error(f"Erro na tarefa principal: {e}")
+    finally:
+        if conn:
+            conn.close()
 
 def agendar_execucao():
-    scheduler = sched.scheduler(time.time, time.sleep)
     def run_periodically():
         tarefa_principal()
-        scheduler.enter(INTERVALO_MINUTOS * 60, 1, run_periodically)
+        scheduler.enter(300, 1, run_periodically)
+
     scheduler.enter(0, 1, run_periodically)
     scheduler.run()
 
 if __name__ == "__main__":
-    logging.info("Iniciando Bifrost Agent...")
+    logger.info("Iniciando Bifrost Agent...")
     agendar_execucao()

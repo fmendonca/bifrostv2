@@ -1,0 +1,35 @@
+# Base UBI9
+FROM registry.access.redhat.com/ubi9/ubi
+
+# Versões
+ENV RABBITMQ_VERSION=4.1.2 \
+    ERLANG_VERSION=26.2
+
+# Instalar dependências e RabbitMQ
+RUN dnf install -y \
+        curl \
+        gnupg \
+        hostname \
+        socat \
+        which \
+        logrotate && \
+    curl -fsSL https://packages.erlang-solutions.com/erlang-solutions-2.0-1.noarch.rpm -o erlang-solutions.rpm && \
+    dnf install -y erlang-solutions.rpm && \
+    dnf install -y erlang-$ERLANG_VERSION && \
+    curl -fsSL https://github.com/rabbitmq/rabbitmq-server/releases/download/v${RABBITMQ_VERSION}/rabbitmq-server-${RABBITMQ_VERSION}-1.el8.noarch.rpm -o rabbitmq.rpm && \
+    rpm -ivh rabbitmq.rpm && \
+    dnf clean all && \
+    rm -f erlang-solutions.rpm rabbitmq.rpm
+
+# Cria usuário
+RUN useradd -r -m rabbitmq
+
+# Expor portas padrão
+EXPOSE 5672 15672
+
+# Volumes
+VOLUME ["/var/lib/rabbitmq", "/etc/rabbitmq"]
+
+# Usuário e comando padrão
+USER rabbitmq
+CMD ["/usr/sbin/rabbitmq-server"]
