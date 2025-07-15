@@ -14,8 +14,20 @@ type Payload struct {
 	VMs       []VM   `json:"vms"`
 }
 
+func enableCORS(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+}
+
 // Roteador principal
 func VMsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	start := time.Now()
 	log.Printf("Incoming request: %s %s", r.Method, r.URL.Path)
 
@@ -82,6 +94,12 @@ func handleGetVMs(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/v1/vms/:uuid/start → atualiza status no banco
 func StartVMHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	uuid := extractUUID(r.URL.Path, "/start")
 	if uuid == "" {
 		http.Error(w, "Invalid UUID", http.StatusBadRequest)
@@ -101,6 +119,13 @@ func StartVMHandler(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/v1/vms/:uuid/stop → atualiza status no banco
 func StopVMHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	uuid := extractUUID(r.URL.Path, "/stop")
 	if uuid == "" {
 		http.Error(w, "Invalid UUID", http.StatusBadRequest)
