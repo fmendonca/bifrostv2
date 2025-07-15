@@ -12,19 +12,19 @@ function VmDetails({ vm }) {
       <div className="mt-2">
         <p className="font-semibold">Discos:</p>
         <pre className="bg-gray-100 p-2 rounded text-sm overflow-x-auto">
-          {JSON.stringify(JSON.parse(vm.disks), null, 2)}
+          {JSON.stringify(vm.disks, null, 2)}
         </pre>
       </div>
       <div className="mt-2">
         <p className="font-semibold">Interfaces:</p>
         <pre className="bg-gray-100 p-2 rounded text-sm overflow-x-auto">
-          {JSON.stringify(JSON.parse(vm.interfaces), null, 2)}
+          {JSON.stringify(vm.interfaces, null, 2)}
         </pre>
       </div>
       <div className="mt-2">
         <p className="font-semibold">Metadata:</p>
         <pre className="bg-gray-100 p-2 rounded text-sm overflow-x-auto">
-          {JSON.stringify(JSON.parse(vm.metadata), null, 2)}
+          {JSON.stringify(vm.metadata, null, 2)}
         </pre>
       </div>
     </div>
