@@ -9,10 +9,7 @@ import (
 	"time"
 )
 
-type Payload struct {
-	Timestamp string `json:"timestamp"`
-	VMs       []VM   `json:"vms"`
-}
+// ... Payload struct etc ...
 
 func enableCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -40,12 +37,14 @@ func VMsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 
-	log.Printf("Handled %s %s in %v", r.Method, r.URL.Path, time.Since(start))
+	duration := time.Since(start)
+	log.Printf("Handled %s %s in %v", r.Method, r.URL.Path, duration)
 }
 
 func handlePostVMs(w http.ResponseWriter, r *http.Request) {
 	var payload Payload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+	err := json.NewDecoder(r.Body).Decode(&payload)
+	if err != nil {
 		log.Printf("Error decoding JSON: %v", err)
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
@@ -54,12 +53,13 @@ func handlePostVMs(w http.ResponseWriter, r *http.Request) {
 	count := 0
 	for _, vm := range payload.VMs {
 		vm.Timestamp = payload.Timestamp
-		if action, err := InsertOrUpdateVM(vm); err != nil {
+		action, err := InsertOrUpdateVM(vm)
+		if err != nil {
 			log.Printf("Failed to insert/update VM %s: %v", vm.Name, err)
-		} else {
-			log.Printf("%s VM: %s (UUID: %s)", action, vm.Name, vm.UUID)
-			count++
+			continue
 		}
+		log.Printf("%s VM: %s (UUID: %s)", action, vm.Name, vm.UUID)
+		count++
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -67,17 +67,7 @@ func handlePostVMs(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleGetVMs(w http.ResponseWriter, r *http.Request) {
-	var (
-		vms []VM
-		err error
-	)
-
-	if r.URL.Query().Get("pending_action") == "1" {
-		vms, err = GetPendingActions()
-	} else {
-		vms, err = GetAllVMs()
-	}
-
+	vms, err := GetAllVMs()
 	if err != nil {
 		log.Printf("Database error on GET: %v", err)
 		http.Error(w, "Database error", http.StatusInternalServerError)
@@ -85,10 +75,14 @@ func handleGetVMs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err = json.NewEncoder(w).Encode(vms); err != nil {
+	err = json.NewEncoder(w).Encode(vms)
+	if err != nil {
 		log.Printf("Error encoding response: %v", err)
 		http.Error(w, "Response encoding error", http.StatusInternalServerError)
+		return
 	}
+
+	log.Printf("GET /api/v1/vms: Returned %d VMs", len(vms))
 }
 
 func StartVMHandler(w http.ResponseWriter, r *http.Request) {
@@ -104,13 +98,16 @@ func StartVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := MarkPendingAction(uuid, "start"); err != nil {
+	err := MarkPendingAction(uuid, "start")
+	if err != nil {
 		log.Printf("Failed to mark start action for VM %s: %v", uuid, err)
 		http.Error(w, "Failed to mark start action", http.StatusInternalServerError)
 		return
 	}
 
-	if err := publishActionToRedis(uuid, "start"); err != nil {
+	// Publica no Redis: chave vm:<uuid>:action = start
+	err = redisClient.Set(ctx, fmt.Sprintf("vm:%s:action", uuid), "start", 0).Err()
+	if err != nil {
 		log.Printf("Failed to publish start action to Redis: %v", err)
 	}
 
@@ -131,13 +128,16 @@ func StopVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := MarkPendingAction(uuid, "stop"); err != nil {
+	err := MarkPendingAction(uuid, "stop")
+	if err != nil {
 		log.Printf("Failed to mark stop action for VM %s: %v", uuid, err)
 		http.Error(w, "Failed to mark stop action", http.StatusInternalServerError)
 		return
 	}
 
-	if err := publishActionToRedis(uuid, "stop"); err != nil {
+	// Publica no Redis: chave vm:<uuid>:action = stop
+	err = redisClient.Set(ctx, fmt.Sprintf("vm:%s:action", uuid), "stop", 0).Err()
+	if err != nil {
 		log.Printf("Failed to publish stop action to Redis: %v", err)
 	}
 
