@@ -4,6 +4,7 @@ import requests
 import time
 import logging
 import os
+import redis
 from datetime import datetime
 
 # Configuração de log
@@ -15,9 +16,18 @@ logger = logging.getLogger()
 
 # Variáveis de ambiente
 API_URL = os.getenv('BIFROST_API_URL', 'http://localhost:8080/api/v1/vms')
-INFINISPAN_URL = os.getenv('INFINISPAN_URL', 'http://localhost:11222/rest/v2/caches/vm-actions')
-INFINISPAN_USER = os.getenv('INFINISPAN_USER', 'user')
-INFINISPAN_PASS = os.getenv('INFINISPAN_PASS', 'pass')
+REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
+REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
+REDIS_DB = int(os.getenv('REDIS_DB', '0'))
+
+# Conexão Redis
+try:
+    redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
+    redis_client.ping()
+    logger.info(f"Conectado ao Redis em {REDIS_HOST}:{REDIS_PORT}")
+except Exception as e:
+    logger.error(f"Erro ao conectar no Redis: {e}")
+    redis_client = None
 
 def coletar_dados_vm(conn):
     vms = []
@@ -61,53 +71,53 @@ def enviar_dados_api(vms):
     try:
         resp = requests.post(API_URL, json=payload)
         if resp.status_code == 200:
-            logger.info(f"Inventário enviado com sucesso.")
+            logger.info("Inventário enviado com sucesso.")
         else:
             logger.error(f"Falha ao enviar inventário: {resp.status_code}")
     except Exception as e:
         logger.error(f"Erro ao enviar inventário: {e}")
 
 def executar_acoes_pendentes(conn):
+    if not redis_client:
+        logger.warning("Redis não conectado, pulando verificação de ações.")
+        return
+
     try:
-        resp = requests.get(INFINISPAN_URL, auth=(INFINISPAN_USER, INFINISPAN_PASS))
-        if resp.status_code != 200 or not resp.text:
-            return  # nada para fazer
+        for key in redis_client.scan_iter("vm-action:*"):
+            uuid = key.decode().split(":")[1]
+            action = redis_client.get(key).decode()
 
-        actions = json.loads(resp.text)
-        uuid = actions.get('uuid')
-        action = actions.get('action')
-
-        if not uuid or not action:
-            return
-
-        dom = conn.lookupByUUIDString(uuid)
-        if action == "start":
-            if dom.isActive() == 0:
-                dom.create()
-                logger.info(f"VM {dom.name()} iniciada com sucesso.")
+            dom = conn.lookupByUUIDString(uuid)
+            if action == "start":
+                if dom.isActive() == 0:
+                    dom.create()
+                    logger.info(f"VM {dom.name()} iniciada com sucesso.")
+                else:
+                    logger.info(f"VM {dom.name()} já está em execução.")
+            elif action == "stop":
+                if dom.isActive() == 1:
+                    try:
+                        dom.shutdown()
+                        logger.info(f"VM {dom.name()} desligada com sucesso.")
+                    except libvirt.libvirtError as e:
+                        if "domain is not running" in str(e):
+                            logger.info(f"VM {dom.name()} já estava desligada, erro ignorado.")
+                        else:
+                            logger.error(f"Erro inesperado ao desligar VM {dom.name()}: {e}")
+                else:
+                    logger.info(f"VM {dom.name()} já está desligada, ignorando comando stop.")
             else:
-                logger.info(f"VM {dom.name()} já está em execução.")
-        elif action == "stop":
-            if dom.isActive() == 1:
-                dom.shutdown()
-                logger.info(f"VM {dom.name()} desligada com sucesso.")
-            else:
-                logger.info(f"VM {dom.name()} já está desligada.")
-        else:
-            logger.warning(f"Ação desconhecida: {action}")
+                logger.warning(f"Ação desconhecida: {action}")
 
-        # Limpa pending_action no backend
-        try:
-            clear_url = f"{API_URL}/{uuid}/{action}"
-            requests.post(clear_url)
-            logger.info(f"Ação {action} confirmada no backend para VM {uuid}.")
-        except Exception as e:
-            logger.error(f"Erro ao notificar backend: {e}")
+            # Remove a ação após executar
+            redis_client.delete(key)
+            logger.info(f"Ação {action} para VM {uuid} removida do Redis.")
 
     except Exception as e:
-        logger.error(f"Erro ao buscar ações do Infinispan: {e}")
+        logger.error(f"Erro ao buscar ações do Redis: {e}")
 
 def tarefa_principal():
+    conn = None
     try:
         conn = libvirt.open(None)
         if conn is None:
@@ -129,7 +139,6 @@ def tarefa_principal():
 
 if __name__ == "__main__":
     logger.info("Iniciando Bifrost Agent...")
-
     while True:
         tarefa_principal()
         time.sleep(300)  # inventário a cada 5 min

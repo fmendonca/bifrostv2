@@ -1,20 +1,17 @@
 [Unit]
 Description=Bifrost Agent Service
-After=network.target libvirtd.service
+After=network.target
 
 [Service]
-Type=simple
-User=root
-Environment="BIFROST_API_URL=http://192.168.86.129:8080/api/v1/vms"
-Environment="INFINISPAN_URL=http://192.168.86.129:11222/rest/v2/caches/vm-actions"
-Environment="INFINISPAN_USER=admin"
-Environment="INFINISPAN_PASS=admin"
 ExecStart=/usr/bin/python3 /opt/bifrost-agent/bifrost-agent.py
 WorkingDirectory=/opt/bifrost-agent
-StandardOutput=append:/var/log/bifrost/bifrost-agent.log
-StandardError=append:/var/log/bifrost/bifrost-agent.log
-Restart=on-failure
-RestartSec=10
+Restart=always
+Environment=BIFROST_API_URL=http://192.168.86.129:8080/api/v1/vms
+Environment=REDIS_HOST=192.168.86.129
+Environment=REDIS_PORT=6379
+Environment=REDIS_PENDING_HASH=pending_actions
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
