@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/lib/pq"
 	_ "github.com/lib/pq"
@@ -75,13 +74,6 @@ func InitDB() {
 		log.Fatal("Failed to create table:", err)
 	}
 	log.Println("Table checked/created.")
-}
-
-func getEnv(key, fallback string) string {
-	if value, ok := os.LookupEnv(key); ok {
-		return value
-	}
-	return fallback
 }
 
 func createTableIfNotExists() error {
