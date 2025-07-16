@@ -1,0 +1,7 @@
+FROM registry.redhat.io/rhel9/redis-7
+
+# Expose Redis port
+EXPOSE 6379
+
+# Redis runs as default user, no need for USER 0
+CMD ["run-redis"]
