@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"time"
 )
 
@@ -14,14 +13,6 @@ var (
 	infinispanUser = getEnv("INFINISPAN_USER", "user")
 	infinispanPass = getEnv("INFINISPAN_PASS", "pass")
 )
-
-// Helper para pegar variável de ambiente com fallback
-func getEnv(key, fallback string) string {
-	if value, ok := os.LookupEnv(key); ok {
-		return value
-	}
-	return fallback
-}
 
 // Publica ação no Infinispan via REST API
 func publishActionToInfinispan(uuid, action string) error {
