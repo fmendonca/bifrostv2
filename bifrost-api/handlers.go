@@ -14,14 +14,12 @@ type Payload struct {
 	VMs       []VM   `json:"vms"`
 }
 
-// Middleware simples para CORS
 func enableCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 }
 
-// Handler principal para /api/v1/vms
 func VMsHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == http.MethodOptions {
@@ -42,10 +40,10 @@ func VMsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 
-	log.Printf("Handled %s %s in %v", r.Method, r.URL.Path, time.Since(start))
+	duration := time.Since(start)
+	log.Printf("Handled %s %s in %v", r.Method, r.URL.Path, duration)
 }
 
-// POST /api/v1/vms → atualiza inventário
 func handlePostVMs(w http.ResponseWriter, r *http.Request) {
 	var payload Payload
 	err := json.NewDecoder(r.Body).Decode(&payload)
@@ -69,19 +67,11 @@ func handlePostVMs(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "Processed %d VMs", count)
+	log.Printf("POST /api/v1/vms: Processed %d VMs", count)
 }
 
-// GET /api/v1/vms → lista todas ou só pendentes
 func handleGetVMs(w http.ResponseWriter, r *http.Request) {
-	var vms []VM
-	var err error
-
-	if r.URL.Query().Get("pending_action") == "1" {
-		vms, err = GetPendingActions()
-	} else {
-		vms, err = GetAllVMs()
-	}
-
+	vms, err := GetAllVMs()
 	if err != nil {
 		log.Printf("Database error on GET: %v", err)
 		http.Error(w, "Database error", http.StatusInternalServerError)
@@ -89,13 +79,16 @@ func handleGetVMs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(vms); err != nil {
+	err = json.NewEncoder(w).Encode(vms)
+	if err != nil {
 		log.Printf("Error encoding response: %v", err)
 		http.Error(w, "Response encoding error", http.StatusInternalServerError)
+		return
 	}
+
+	log.Printf("GET /api/v1/vms: Returned %d VMs", len(vms))
 }
 
-// POST /api/v1/vms/:uuid/start
 func StartVMHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == http.MethodOptions {
@@ -116,16 +109,17 @@ func StartVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = publishActionToRedis(uuid, "start")
+	err = PublishAction(uuid, "start")
 	if err != nil {
-		log.Printf("Failed to publish start action to Redis: %v", err)
+		log.Printf("Failed to publish start action for VM %s: %v", uuid, err)
+		http.Error(w, "Failed to publish start action", http.StatusInternalServerError)
+		return
 	}
 
-	log.Printf("Marked VM %s for start", uuid)
-	fmt.Fprintf(w, "VM %s marked for start", uuid)
+	log.Printf("Marked and published start action for VM %s", uuid)
+	fmt.Fprintf(w, "VM %s marked and published for start", uuid)
 }
 
-// POST /api/v1/vms/:uuid/stop
 func StopVMHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == http.MethodOptions {
@@ -146,21 +140,21 @@ func StopVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = publishActionToRedis(uuid, "stop")
+	err = PublishAction(uuid, "stop")
 	if err != nil {
-		log.Printf("Failed to publish stop action to Redis: %v", err)
+		log.Printf("Failed to publish stop action for VM %s: %v", uuid, err)
+		http.Error(w, "Failed to publish stop action", http.StatusInternalServerError)
+		return
 	}
 
-	log.Printf("Marked VM %s for stop", uuid)
-	fmt.Fprintf(w, "VM %s marked for stop", uuid)
+	log.Printf("Marked and published stop action for VM %s", uuid)
+	fmt.Fprintf(w, "VM %s marked and published for stop", uuid)
 }
 
-// Helper para extrair UUID da URL
 func extractUUID(path, suffix string) string {
-	base := strings.TrimSuffix(path, suffix)
-	parts := strings.Split(base, "/")
-	if len(parts) < 5 {
+	if !strings.HasSuffix(path, suffix) {
 		return ""
 	}
-	return parts[4] // /api/v1/vms/{uuid}
+	uuid := strings.TrimSuffix(strings.TrimPrefix(path, "/api/v1/vms/"), suffix)
+	return strings.Trim(uuid, "/")
 }

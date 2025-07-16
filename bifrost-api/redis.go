@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -37,37 +36,15 @@ func InitRedis() {
 	log.Printf("Connected to Redis at %s", addr)
 }
 
-// Publica ação (start/stop) no Redis com TTL (opcional)
-func publishActionToRedis(uuid string, action string) error {
-	key := fmt.Sprintf("vm:%s:action", uuid)
-	value := action
+// Publica ação (start/stop) no canal Redis 'vm-actions'
+func PublishAction(uuid string, action string) error {
+	message := fmt.Sprintf(`{"uuid":"%s", "action":"%s"}`, uuid, action)
 
-	// Define TTL de 5 minutos para limpar automaticamente (ajuste se quiser)
-	err := RedisClient.Set(RedisCtx, key, value, 5*time.Minute).Err()
+	err := RedisClient.Publish(RedisCtx, "vm-actions", message).Err()
 	if err != nil {
-		return fmt.Errorf("failed to publish action to Redis: %w", err)
+		return fmt.Errorf("failed to publish action to Redis channel: %w", err)
 	}
 
-	log.Printf("Published action to Redis: %s -> %s", key, value)
+	log.Printf("Published to Redis channel 'vm-actions': %s", message)
 	return nil
-}
-
-// Lê ação pendente (start/stop) e limpa a chave após ler
-func consumeActionFromRedis(uuid string) (string, error) {
-	key := fmt.Sprintf("vm:%s:action", uuid)
-	action, err := RedisClient.Get(RedisCtx, key).Result()
-	if err == redis.Nil {
-		return "", nil // no action
-	}
-	if err != nil {
-		return "", fmt.Errorf("failed to get action from Redis: %w", err)
-	}
-
-	// Limpa a chave após consumir
-	err = RedisClient.Del(RedisCtx, key).Err()
-	if err != nil {
-		log.Printf("Warning: failed to delete key %s from Redis: %v", key, err)
-	}
-
-	return action, nil
 }
