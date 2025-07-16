@@ -49,16 +49,17 @@ def coletar_dados_vm(conn):
                 disk_path = disk.split('file=')[1].split("'")[1]
                 vm_info["disks"].append({"path": disk_path})
 
-        # Interfaces
-        try:
-            iface_addrs = dom.interfaceAddresses(libvirt.VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE, 0)
-            for iface in iface_addrs.values():
-                vm_info["interfaces"].append({
-                    "mac": iface.get('hwaddr'),
-                    "addrs": iface.get('addrs', [])
-                })
-        except libvirt.libvirtError:
-            pass  # nem sempre disponível
+        # Interfaces (somente se VM estiver rodando)
+        if dom.isActive() == 1:
+            try:
+                iface_addrs = dom.interfaceAddresses(libvirt.VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE, 0)
+                for iface in iface_addrs.values():
+                    vm_info["interfaces"].append({
+                        "mac": iface.get('hwaddr'),
+                        "addrs": iface.get('addrs', [])
+                    })
+            except libvirt.libvirtError:
+                pass  # nem sempre disponível
 
         vms.append(vm_info)
     return vms
@@ -141,4 +142,4 @@ if __name__ == "__main__":
     logger.info("Iniciando Bifrost Agent...")
     while True:
         tarefa_principal()
-        time.sleep(300)  # inventário a cada 5 min
+        time.sleep(60)  # inventário a cada 5 min
