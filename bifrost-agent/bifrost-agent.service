@@ -7,8 +7,8 @@ Type=simple
 User=root
 Environment="BIFROST_API_URL=http://192.168.86.129:8080/api/v1/vms"
 Environment="INFINISPAN_URL=http://192.168.86.129:11222/rest/v2/caches/vm-actions"
-Environment="INFINISPAN_USER=myuser"
-Environment="INFINISPAN_PASS=mypass"
+Environment="INFINISPAN_USER=admin"
+Environment="INFINISPAN_PASS=admin"
 ExecStart=/usr/bin/python3 /opt/bifrost-agent/bifrost-agent.py
 WorkingDirectory=/opt/bifrost-agent
 StandardOutput=append:/var/log/bifrost/bifrost-agent.log
