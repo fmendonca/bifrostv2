@@ -1,41 +1,49 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"log"
-	"net/http"
-	"time"
+
+	ispn "github.com/infinispan/infinispan-go-client"
 )
 
-var (
-	infinispanURL  = getEnv("INFINISPAN_URL", "http://localhost:11222/rest/v2/caches/vm-actions")
-	infinispanUser = getEnv("INFINISPAN_USER", "user")
-	infinispanPass = getEnv("INFINISPAN_PASS", "pass")
-)
+func PublishActionToInfinispan(vmUUID, action string) error {
+	host := getEnv("INFINISPAN_HOST", "127.0.0.1:11222")
+	user := getEnv("INFINISPAN_USER", "admin")
+	pass := getEnv("INFINISPAN_PASSWORD", "admin")
+	cacheName := getEnv("INFINISPAN_CACHE", "bifrost")
 
-// Publica ação no Infinispan via REST API
-func publishActionToInfinispan(uuid, action string) error {
-	jsonStr := []byte(fmt.Sprintf(`{"uuid":"%s","action":"%s"}`, uuid, action))
-	req, err := http.NewRequest("POST", infinispanURL, bytes.NewBuffer(jsonStr))
+	config := ispn.HotRodConfiguration{
+		URI:      host,
+		User:     user,
+		Password: pass,
+		Sasl:     "SCRAM-SHA-512", // ou SCRAM-SHA-256 se precisar
+	}
+
+	client, err := ispn.NewHotRodClient(config)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %v", err)
+		return fmt.Errorf("failed to connect to Infinispan: %w", err)
 	}
+	defer client.Close()
 
-	req.SetBasicAuth(infinispanUser, infinispanPass)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
+	cache, err := client.GetCache(cacheName)
 	if err != nil {
-		return fmt.Errorf("failed to send request: %v", err)
+		log.Printf("Cache '%s' does not exist. Creating...", cacheName)
+		err = client.CreateCache(cacheName, "<distributed-cache/>")
+		if err != nil {
+			return fmt.Errorf("failed to create cache: %w", err)
+		}
+		cache, _ = client.GetCache(cacheName)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		log.Printf("✅ Published action '%s' for VM %s to Infinispan", action, uuid)
-		return nil
+	// Publica ação no cache
+	err = cache.Put(vmUUID, action)
+	if err != nil {
+		return fmt.Errorf("failed to put action into cache: %w", err)
 	}
 
-	return fmt.Errorf("infinispan responded with status %d", resp.StatusCode)
+	log.Printf("✅ Published %s action for VM %s to Infinispan", action, vmUUID)
+	return nil
 }
+
+// Se já existe um config.go com getEnv, aqui NÃO precisa redefinir.
