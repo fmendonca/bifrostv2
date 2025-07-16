@@ -7,75 +7,11 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-// RabbitMQ config
-var rabbitConn *amqp.Connection
-var rabbitChan *amqp.Channel
-var rabbitQueue = "bifrost.actions"
-
-// Mensagem enviada para a fila
-type ActionMessage struct {
-	UUID   string `json:"uuid"`
-	Action string `json:"action"`
-}
-
-func InitRabbitMQ() {
-	var err error
-
-	rabbitURL := getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
-	rabbitQueue = getEnv("RABBITMQ_QUEUE", "bifrost.actions")
-
-	rabbitConn, err = amqp.Dial(rabbitURL)
-	if err != nil {
-		log.Fatalf("Failed to connect to RabbitMQ: %v", err)
-	}
-
-	rabbitChan, err = rabbitConn.Channel()
-	if err != nil {
-		log.Fatalf("Failed to open RabbitMQ channel: %v", err)
-	}
-
-	_, err = rabbitChan.QueueDeclare(
-		rabbitQueue,
-		true,  // durable
-		false, // autoDelete
-		false, // exclusive
-		false, // noWait
-		nil,   // args
-	)
-	if err != nil {
-		log.Fatalf("Failed to declare queue: %v", err)
-	}
-
-	log.Printf("Connected to RabbitMQ: %s, queue: %s", rabbitURL, rabbitQueue)
-}
-
-func publishAction(uuid string, action string) error {
-	msg := ActionMessage{UUID: uuid, Action: action}
-	body, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("failed to marshal action message: %v", err)
-	}
-
-	err = rabbitChan.Publish(
-		"",          // exchange
-		rabbitQueue, // routing key (queue name)
-		false,       // mandatory
-		false,       // immediate
-		amqp.Publishing{
-			ContentType: "application/json",
-			Body:        body,
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("failed to publish message: %v", err)
-	}
-
-	log.Printf("Published action to queue: VM=%s action=%s", uuid, action)
-	return nil
+type Payload struct {
+	Timestamp string `json:"timestamp"`
+	VMs       []VM   `json:"vms"`
 }
 
 // Middleware simples para CORS
@@ -128,7 +64,7 @@ func handlePostVMs(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Failed to insert/update VM %s: %v", vm.Name, err)
 			continue
 		}
-		log.Printf("%s VM: %s (UUID: %s)", action, vm.Name, vm.UUID)
+		log.Printf("%s VM: %s (UUID: %s) with disks: %s", action, vm.Name, vm.UUID, string(vm.Disks))
 		count++
 	}
 
@@ -165,7 +101,7 @@ func handleGetVMs(w http.ResponseWriter, r *http.Request) {
 	log.Printf("GET /api/v1/vms: Returned %d VMs", len(vms))
 }
 
-// POST /api/v1/vms/:uuid/start → marca pending_action e publica
+// POST /api/v1/vms/:uuid/start → marca pending_action = 'start' + publica no Infinispan
 func StartVMHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == http.MethodOptions {
@@ -181,23 +117,21 @@ func StartVMHandler(w http.ResponseWriter, r *http.Request) {
 
 	err := MarkPendingAction(uuid, "start")
 	if err != nil {
-		log.Printf("Failed to mark start for VM %s: %v", uuid, err)
-		http.Error(w, "Failed to mark start", http.StatusInternalServerError)
+		log.Printf("Failed to mark start action for VM %s: %v", uuid, err)
+		http.Error(w, "Failed to mark start action", http.StatusInternalServerError)
 		return
 	}
 
-	err = publishAction(uuid, "start")
+	err = publishActionToInfinispan(uuid, "start")
 	if err != nil {
-		log.Printf("Failed to publish start for VM %s: %v", uuid, err)
-		http.Error(w, "Failed to publish start action", http.StatusInternalServerError)
-		return
+		log.Printf("Failed to publish start action to Infinispan: %v", err)
 	}
 
-	log.Printf("Marked + published start for VM %s", uuid)
-	fmt.Fprintf(w, "VM %s marked and published for start", uuid)
+	log.Printf("Marked VM %s for start", uuid)
+	fmt.Fprintf(w, "VM %s marked for start", uuid)
 }
 
-// POST /api/v1/vms/:uuid/stop → marca pending_action e publica
+// POST /api/v1/vms/:uuid/stop → marca pending_action = 'stop' + publica no Infinispan
 func StopVMHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == http.MethodOptions {
@@ -213,23 +147,21 @@ func StopVMHandler(w http.ResponseWriter, r *http.Request) {
 
 	err := MarkPendingAction(uuid, "stop")
 	if err != nil {
-		log.Printf("Failed to mark stop for VM %s: %v", uuid, err)
-		http.Error(w, "Failed to mark stop", http.StatusInternalServerError)
+		log.Printf("Failed to mark stop action for VM %s: %v", uuid, err)
+		http.Error(w, "Failed to mark stop action", http.StatusInternalServerError)
 		return
 	}
 
-	err = publishAction(uuid, "stop")
+	err = publishActionToInfinispan(uuid, "stop")
 	if err != nil {
-		log.Printf("Failed to publish stop for VM %s: %v", uuid, err)
-		http.Error(w, "Failed to publish stop action", http.StatusInternalServerError)
-		return
+		log.Printf("Failed to publish stop action to Infinispan: %v", err)
 	}
 
-	log.Printf("Marked + published stop for VM %s", uuid)
-	fmt.Fprintf(w, "VM %s marked and published for stop", uuid)
+	log.Printf("Marked VM %s for stop", uuid)
+	fmt.Fprintf(w, "VM %s marked for stop", uuid)
 }
 
-// Helper para extrair UUID
+// Helper para extrair UUID da URL
 func extractUUID(path, suffix string) string {
 	if !strings.HasSuffix(path, suffix) {
 		return ""

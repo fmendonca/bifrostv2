@@ -1,7 +1,6 @@
 import libvirt
 import json
 import requests
-import sched
 import time
 import logging
 import os
@@ -14,11 +13,11 @@ logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
                     format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger()
 
-# Configuração do scheduler
-scheduler = sched.scheduler(time.time, time.sleep)
-
-# Endpoint da API (lido de variável ambiente)
+# Variáveis de ambiente
 API_URL = os.getenv('BIFROST_API_URL', 'http://localhost:8080/api/v1/vms')
+INFINISPAN_URL = os.getenv('INFINISPAN_URL', 'http://localhost:11222/rest/v2/caches/vm-actions')
+INFINISPAN_USER = os.getenv('INFINISPAN_USER', 'user')
+INFINISPAN_PASS = os.getenv('INFINISPAN_PASS', 'pass')
 
 def coletar_dados_vm(conn):
     vms = []
@@ -36,18 +35,20 @@ def coletar_dados_vm(conn):
 
         # Discos
         for disk in dom.XMLDesc().split('<disk type=')[1:]:
-            disk_path = disk.split('file=')[1].split('\'')[1]
-            vm_info["disks"].append({"path": disk_path})
+            if 'file=' in disk:
+                disk_path = disk.split('file=')[1].split("'")[1]
+                vm_info["disks"].append({"path": disk_path})
 
         # Interfaces
-        for iface in dom.interfaceAddresses(libvirt.VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE, 0).values():
-            vm_info["interfaces"].append({
-                "mac": iface.get('hwaddr'),
-                "addrs": iface.get('addrs', [])
-            })
-
-        # Metadata
-        vm_info["metadata"] = dom.metadata(libvirt.VIR_DOMAIN_METADATA_ELEMENT, None, 0)
+        try:
+            iface_addrs = dom.interfaceAddresses(libvirt.VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE, 0)
+            for iface in iface_addrs.values():
+                vm_info["interfaces"].append({
+                    "mac": iface.get('hwaddr'),
+                    "addrs": iface.get('addrs', [])
+                })
+        except libvirt.libvirtError:
+            pass  # nem sempre disponível
 
         vms.append(vm_info)
     return vms
@@ -68,33 +69,43 @@ def enviar_dados_api(vms):
 
 def executar_acoes_pendentes(conn):
     try:
-        resp = requests.get(f"{API_URL}?pending_action=1")
-        resp.raise_for_status()
-        vms_pendentes = resp.json()
-    except Exception as e:
-        logger.error(f"Erro ao buscar ações pendentes: {e}")
-        return
+        resp = requests.get(INFINISPAN_URL, auth=(INFINISPAN_USER, INFINISPAN_PASS))
+        if resp.status_code != 200 or not resp.text:
+            return  # nada para fazer
 
-    for vm in vms_pendentes:
+        actions = json.loads(resp.text)
+        uuid = actions.get('uuid')
+        action = actions.get('action')
+
+        if not uuid or not action:
+            return
+
+        dom = conn.lookupByUUIDString(uuid)
+        if action == "start":
+            if dom.isActive() == 0:
+                dom.create()
+                logger.info(f"VM {dom.name()} iniciada com sucesso.")
+            else:
+                logger.info(f"VM {dom.name()} já está em execução.")
+        elif action == "stop":
+            if dom.isActive() == 1:
+                dom.shutdown()
+                logger.info(f"VM {dom.name()} desligada com sucesso.")
+            else:
+                logger.info(f"VM {dom.name()} já está desligada.")
+        else:
+            logger.warning(f"Ação desconhecida: {action}")
+
+        # Limpa pending_action no backend
         try:
-            dom = conn.lookupByUUIDString(vm['uuid'])
-            action = vm.get('pending_action')
-            if action == "start":
-                if dom.isActive() == 0:
-                    dom.create()
-                    logger.info(f"VM {vm['name']} iniciada com sucesso.")
-                else:
-                    logger.info(f"VM {vm['name']} já está em execução.")
-                requests.post(f"{API_URL}/{vm['uuid']}/start")
-            elif action == "stop":
-                if dom.isActive() == 1:
-                    dom.shutdown()
-                    logger.info(f"VM {vm['name']} desligada com sucesso.")
-                else:
-                    logger.info(f"VM {vm['name']} já está desligada.")
-                requests.post(f"{API_URL}/{vm['uuid']}/stop")
+            clear_url = f"{API_URL}/{uuid}/{action}"
+            requests.post(clear_url)
+            logger.info(f"Ação {action} confirmada no backend para VM {uuid}.")
         except Exception as e:
-            logger.error(f"Erro ao processar ação '{action}' para VM {vm['name']}: {e}")
+            logger.error(f"Erro ao notificar backend: {e}")
+
+    except Exception as e:
+        logger.error(f"Erro ao buscar ações do Infinispan: {e}")
 
 def tarefa_principal():
     try:
@@ -106,6 +117,8 @@ def tarefa_principal():
         logger.info("Coletando dados das VMs...")
         vms = coletar_dados_vm(conn)
         enviar_dados_api(vms)
+
+        logger.info("Verificando ações pendentes...")
         executar_acoes_pendentes(conn)
 
     except Exception as e:
@@ -114,14 +127,9 @@ def tarefa_principal():
         if conn:
             conn.close()
 
-def agendar_execucao():
-    def run_periodically():
-        tarefa_principal()
-        scheduler.enter(300, 1, run_periodically)
-
-    scheduler.enter(0, 1, run_periodically)
-    scheduler.run()
-
 if __name__ == "__main__":
     logger.info("Iniciando Bifrost Agent...")
-    agendar_execucao()
+
+    while True:
+        tarefa_principal()
+        time.sleep(300)  # inventário a cada 5 min

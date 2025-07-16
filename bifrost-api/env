@@ -4,3 +4,6 @@ DB_USER=postgres
 DB_PASSWORD=postgres
 DB_NAME=bifrost
 DB_SSLMODE=disable
+INFINISPAN_URL=http://infinispan:11222/rest/v2/caches/vm-actions
+INFINISPAN_USER=myuser
+INFINISPAN_PASS=mypass

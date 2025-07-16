@@ -27,3 +27,31 @@ func main() {
 	log.Println("Bifrost API running on port 8080...")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
+func vmActionHandler(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Path
+
+	if len(path) < len("/api/v1/vms/uuid/stop") {
+		http.NotFound(w, r)
+		return
+	}
+
+	if pathHasSuffix(path, "/start") {
+		StartVMHandler(w, r)
+		return
+	}
+
+	if pathHasSuffix(path, "/stop") {
+		StopVMHandler(w, r)
+		return
+	}
+
+	http.NotFound(w, r)
+}
+
+// Helper simples para checar sufixo (evita erro em path estranho)
+func pathHasSuffix(path, suffix string) bool {
+	if len(path) < len(suffix) {
+		return false
+	}
+	return path[len(path)-len(suffix):] == suffix
+}
