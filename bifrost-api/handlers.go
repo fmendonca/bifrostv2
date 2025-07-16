@@ -9,14 +9,19 @@ import (
 	"time"
 )
 
-// ... Payload struct etc ...
+type Payload struct {
+	Timestamp string `json:"timestamp"`
+	VMs       []VM   `json:"vms"`
+}
 
+// Middleware simples para CORS
 func enableCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 }
 
+// Handler principal para /api/v1/vms
 func VMsHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == http.MethodOptions {
@@ -37,10 +42,10 @@ func VMsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 
-	duration := time.Since(start)
-	log.Printf("Handled %s %s in %v", r.Method, r.URL.Path, duration)
+	log.Printf("Handled %s %s in %v", r.Method, r.URL.Path, time.Since(start))
 }
 
+// POST /api/v1/vms → atualiza inventário
 func handlePostVMs(w http.ResponseWriter, r *http.Request) {
 	var payload Payload
 	err := json.NewDecoder(r.Body).Decode(&payload)
@@ -66,8 +71,17 @@ func handlePostVMs(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Processed %d VMs", count)
 }
 
+// GET /api/v1/vms → lista todas ou só pendentes
 func handleGetVMs(w http.ResponseWriter, r *http.Request) {
-	vms, err := GetAllVMs()
+	var vms []VM
+	var err error
+
+	if r.URL.Query().Get("pending_action") == "1" {
+		vms, err = GetPendingActions()
+	} else {
+		vms, err = GetAllVMs()
+	}
+
 	if err != nil {
 		log.Printf("Database error on GET: %v", err)
 		http.Error(w, "Database error", http.StatusInternalServerError)
@@ -75,16 +89,13 @@ func handleGetVMs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(vms)
-	if err != nil {
+	if err := json.NewEncoder(w).Encode(vms); err != nil {
 		log.Printf("Error encoding response: %v", err)
 		http.Error(w, "Response encoding error", http.StatusInternalServerError)
-		return
 	}
-
-	log.Printf("GET /api/v1/vms: Returned %d VMs", len(vms))
 }
 
+// POST /api/v1/vms/:uuid/start
 func StartVMHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == http.MethodOptions {
@@ -105,8 +116,7 @@ func StartVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Publica no Redis: chave vm:<uuid>:action = start
-	err = redisClient.Set(ctx, fmt.Sprintf("vm:%s:action", uuid), "start", 0).Err()
+	err = publishActionToRedis(uuid, "start")
 	if err != nil {
 		log.Printf("Failed to publish start action to Redis: %v", err)
 	}
@@ -115,6 +125,7 @@ func StartVMHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "VM %s marked for start", uuid)
 }
 
+// POST /api/v1/vms/:uuid/stop
 func StopVMHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == http.MethodOptions {
@@ -135,8 +146,7 @@ func StopVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Publica no Redis: chave vm:<uuid>:action = stop
-	err = redisClient.Set(ctx, fmt.Sprintf("vm:%s:action", uuid), "stop", 0).Err()
+	err = publishActionToRedis(uuid, "stop")
 	if err != nil {
 		log.Printf("Failed to publish stop action to Redis: %v", err)
 	}
@@ -145,10 +155,12 @@ func StopVMHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "VM %s marked for stop", uuid)
 }
 
+// Helper para extrair UUID da URL
 func extractUUID(path, suffix string) string {
-	if !strings.HasSuffix(path, suffix) {
+	base := strings.TrimSuffix(path, suffix)
+	parts := strings.Split(base, "/")
+	if len(parts) < 5 {
 		return ""
 	}
-	uuid := strings.TrimSuffix(strings.TrimPrefix(path, "/api/v1/vms/"), suffix)
-	return strings.Trim(uuid, "/")
+	return parts[4] // /api/v1/vms/{uuid}
 }

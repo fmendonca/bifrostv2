@@ -73,7 +73,13 @@ func InitDB() {
 	if err != nil {
 		log.Fatal("Failed to create table:", err)
 	}
-	log.Println("Table checked/created.")
+
+	err = autoMigrate()
+	if err != nil {
+		log.Fatal("Failed to auto-migrate table:", err)
+	}
+
+	log.Println("Table checked/created and auto-migrated.")
 }
 
 func createTableIfNotExists() error {
@@ -95,6 +101,30 @@ func createTableIfNotExists() error {
 	return err
 }
 
+func autoMigrate() error {
+	// Check if 'pending_action' exists; add if missing
+	var columnName string
+	err := DB.QueryRow(`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name='vms' AND column_name='pending_action'
+    `).Scan(&columnName)
+
+	if err == sql.ErrNoRows {
+		log.Println("Column 'pending_action' missing, adding...")
+		_, err := DB.Exec(`ALTER TABLE vms ADD COLUMN pending_action TEXT`)
+		if err != nil {
+			return fmt.Errorf("failed to add column pending_action: %v", err)
+		}
+		log.Println("Column 'pending_action' added successfully.")
+	} else if err != nil {
+		return fmt.Errorf("failed to check columns: %v", err)
+	} else {
+		log.Println("Column 'pending_action' already exists.")
+	}
+	return nil
+}
+
 func InsertOrUpdateVM(vm VM) (string, error) {
 	res, err := DB.Exec(`
         INSERT INTO vms 
@@ -108,7 +138,8 @@ func InsertOrUpdateVM(vm VM) (string, error) {
             disks = EXCLUDED.disks,
             interfaces = EXCLUDED.interfaces,
             metadata = EXCLUDED.metadata,
-            timestamp = EXCLUDED.timestamp
+            timestamp = EXCLUDED.timestamp,
+            pending_action = EXCLUDED.pending_action
     `, vm.Name, vm.UUID, vm.State, vm.CPUAllocation, vm.MemoryAllocation,
 		vm.Disks, vm.Interfaces, vm.Metadata, vm.Timestamp, vm.PendingAction)
 
@@ -150,7 +181,6 @@ func GetAllVMs() ([]VM, error) {
 	return vms, nil
 }
 
-// ✅ Busca apenas VMs com pending_action definido
 func GetPendingActions() ([]VM, error) {
 	rows, err := DB.Query(`
         SELECT name, uuid, state, cpu_allocation, memory_allocation, disks, interfaces, metadata, timestamp, pending_action
@@ -174,7 +204,6 @@ func GetPendingActions() ([]VM, error) {
 	return vms, nil
 }
 
-// ✅ Atualiza estado + limpa pending_action
 func UpdateVMState(uuid string, state string) error {
 	_, err := DB.Exec(`
         UPDATE vms 
@@ -184,7 +213,6 @@ func UpdateVMState(uuid string, state string) error {
 	return err
 }
 
-// ✅ Marca pending_action (ex.: start, stop)
 func MarkPendingAction(uuid string, action string) error {
 	_, err := DB.Exec(`
         UPDATE vms 

@@ -42,7 +42,7 @@ func publishActionToRedis(uuid string, action string) error {
 	key := fmt.Sprintf("vm:%s:action", uuid)
 	value := action
 
-	// Define TTL de 5 minutos para limpar automaticamente (opcional, ajuste se quiser)
+	// Define TTL de 5 minutos para limpar automaticamente (ajuste se quiser)
 	err := RedisClient.Set(RedisCtx, key, value, 5*time.Minute).Err()
 	if err != nil {
 		return fmt.Errorf("failed to publish action to Redis: %w", err)
@@ -50,4 +50,24 @@ func publishActionToRedis(uuid string, action string) error {
 
 	log.Printf("Published action to Redis: %s -> %s", key, value)
 	return nil
+}
+
+// Lê ação pendente (start/stop) e limpa a chave após ler
+func consumeActionFromRedis(uuid string) (string, error) {
+	key := fmt.Sprintf("vm:%s:action", uuid)
+	action, err := RedisClient.Get(RedisCtx, key).Result()
+	if err == redis.Nil {
+		return "", nil // no action
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to get action from Redis: %w", err)
+	}
+
+	// Limpa a chave após consumir
+	err = RedisClient.Del(RedisCtx, key).Err()
+	if err != nil {
+		log.Printf("Warning: failed to delete key %s from Redis: %v", key, err)
+	}
+
+	return action, nil
 }
