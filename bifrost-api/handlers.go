@@ -102,15 +102,13 @@ func StartVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := MarkPendingAction(uuid, "start")
-	if err != nil {
+	if err := MarkPendingAction(uuid, "start"); err != nil {
 		log.Printf("Failed to mark start action for VM %s: %v", uuid, err)
 		http.Error(w, "Failed to mark start action", http.StatusInternalServerError)
 		return
 	}
 
-	err = PublishAction(uuid, "start")
-	if err != nil {
+	if err := PublishAction(uuid, "start"); err != nil {
 		log.Printf("Failed to publish start action for VM %s: %v", uuid, err)
 		http.Error(w, "Failed to publish start action", http.StatusInternalServerError)
 		return
@@ -133,15 +131,13 @@ func StopVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := MarkPendingAction(uuid, "stop")
-	if err != nil {
+	if err := MarkPendingAction(uuid, "stop"); err != nil {
 		log.Printf("Failed to mark stop action for VM %s: %v", uuid, err)
 		http.Error(w, "Failed to mark stop action", http.StatusInternalServerError)
 		return
 	}
 
-	err = PublishAction(uuid, "stop")
-	if err != nil {
+	if err := PublishAction(uuid, "stop"); err != nil {
 		log.Printf("Failed to publish stop action for VM %s: %v", uuid, err)
 		http.Error(w, "Failed to publish stop action", http.StatusInternalServerError)
 		return
@@ -160,6 +156,12 @@ func extractUUID(path, suffix string) string {
 }
 
 func UpdateVMHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	var update struct {
 		UUID      string `json:"uuid"`
 		Action    string `json:"action"`
@@ -173,8 +175,14 @@ func UpdateVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Exemplo simples: só loga (você pode expandir para atualizar no banco)
-	log.Printf("Update recebido: UUID=%s, Action=%s, Result=%s, Timestamp=%s",
+	err := UpdateVMStatus(update.UUID, update.Action, update.Result, update.Timestamp)
+	if err != nil {
+		log.Printf("❌ Failed to update VM %s: %v", update.UUID, err)
+		http.Error(w, "Failed to update VM", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("✅ Update recebido: UUID=%s, Action=%s, Result=%s, Timestamp=%s",
 		update.UUID, update.Action, update.Result, update.Timestamp)
 
 	w.WriteHeader(http.StatusOK)

@@ -221,3 +221,17 @@ func MarkPendingAction(uuid string, action string) error {
     `, action, uuid)
 	return err
 }
+
+func UpdateVMStatus(uuid, action, result, timestamp string) error {
+	_, err := DB.Exec(`
+        UPDATE vms
+        SET state = $1, pending_action = NULL, timestamp = $2
+        WHERE uuid = $3
+    `, result, timestamp, uuid)
+	if err != nil {
+		return fmt.Errorf("failed to update VM %s status: %w", uuid, err)
+	}
+
+	log.Printf("✅ Banco atualizado: VM %s -> state=%s at %s", uuid, result, timestamp)
+	return nil
+}
