@@ -17,6 +17,7 @@ logger = logging.getLogger()
 
 # Variáveis de ambiente
 API_URL = os.getenv('BIFROST_API_URL', 'http://localhost:8080/api/v1/vms')
+API_UPDATE_URL = os.getenv('BIFROST_API_UPDATE_URL', f"{API_URL}/update")
 REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
 REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
 REDIS_CHANNEL = os.getenv('REDIS_CHANNEL', 'vm-actions')
@@ -35,39 +36,69 @@ def coletar_dados_vm(conn):
     vms = []
     for dom in conn.listAllDomains():
         try:
-            vm_info = {
-                "name": dom.name(),
-                "uuid": dom.UUIDString(),
-                "state": dom.state()[0],
-                "cpu_allocation": dom.maxVcpus(),
-                "memory_allocation": dom.maxMemory(),
-                "disks": [],
-                "interfaces": [],
-                "metadata": {},
-            }
+            name = dom.name()
+            uuid = dom.UUIDString()
+            try:
+                state_code = dom.state()[0]
+                state = {
+                    1: "running",
+                    3: "paused",
+                    5: "shut off",
+                    7: "crashed"
+                }.get(state_code, f"unknown ({state_code})")
+            except Exception as e:
+                logger.warning(f"⚠️ {name}: falha em state() → {e}")
+                state = "unknown"
 
-            # Discos
-            for disk in dom.XMLDesc().split('<disk type=')[1:]:
-                if 'file=' in disk:
-                    disk_path = disk.split('file=')[1].split("'")[1]
-                    vm_info["disks"].append({"path": disk_path})
+            try:
+                cpu = int(dom.maxVcpus())
+            except Exception as e:
+                logger.warning(f"⚠️ {name}: falha em maxVcpus() → {e}")
+                cpu = 0
 
-            # Interfaces protegido
-            if dom.isActive() == 1:
-                try:
+            try:
+                memory = int(dom.maxMemory())
+            except Exception as e:
+                logger.warning(f"⚠️ {name}: falha em maxMemory() → {e}")
+                memory = 0
+
+            disks = []
+            try:
+                xml = dom.XMLDesc()
+                for disk in xml.split('<disk type=')[1:]:
+                    if 'file=' in disk:
+                        disk_path = disk.split('file=')[1].split("'")[1]
+                        disks.append({"path": disk_path})
+            except Exception as e:
+                logger.warning(f"⚠️ {name}: falha ao coletar discos → {e}")
+
+            interfaces = []
+            try:
+                if dom.isActive() == 1:
                     iface_addrs = dom.interfaceAddresses(libvirt.VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE, 0)
                     for iface in iface_addrs.values():
-                        vm_info["interfaces"].append({
-                            "mac": iface.get('hwaddr'),
-                            "addrs": iface.get('addrs', [])
+                        interfaces.append({
+                            "mac": iface.get('hwaddr', ''),
+                            "addrs": [addr['addr'] for addr in iface.get('addrs', []) if 'addr' in addr]
                         })
-                except libvirt.libvirtError as e:
-                    logger.warning(f"⚠️ Interfaces não coletadas de {dom.name()}: {e}")
+            except Exception as e:
+                logger.warning(f"⚠️ {name}: falha ao coletar interfaces → {e}")
+
+            vm_info = {
+                "name": name,
+                "uuid": uuid,
+                "state": state,
+                "cpu_allocation": cpu,
+                "memory_allocation": memory,
+                "disks": disks,
+                "interfaces": interfaces,
+                "metadata": {},
+            }
 
             vms.append(vm_info)
 
         except Exception as e:
-            logger.error(f"❌ Erro ao coletar dados da VM {dom.name()}: {e}")
+            logger.error(f"❌ Erro geral ao coletar VM (skipada): {e}")
 
     return vms
 
@@ -77,13 +108,29 @@ def enviar_dados_api(vms):
         "vms": vms
     }
     try:
-        resp = requests.post(API_URL, json=payload, timeout=10)
+        resp = requests.post(API_URL, json=payload, timeout=15)
         if resp.status_code == 200:
             logger.info("✅ Inventário enviado com sucesso.")
         else:
             logger.error(f"❌ Falha ao enviar inventário: {resp.status_code} - {resp.text}")
     except Exception as e:
         logger.error(f"❌ Erro ao enviar inventário: {e}")
+
+def report_action_to_api(uuid, action, result):
+    payload = {
+        "uuid": uuid,
+        "action": action,
+        "result": result,
+        "timestamp": datetime.now().astimezone().isoformat()
+    }
+    try:
+        resp = requests.post(API_UPDATE_URL, json=payload, timeout=10)
+        if resp.status_code == 200:
+            logger.info(f"✅ Atualização enviada para API após {action} em {uuid}.")
+        else:
+            logger.error(f"❌ Falha ao enviar atualização para API: {resp.status_code} - {resp.text}")
+    except Exception as e:
+        logger.error(f"❌ Erro ao enviar atualização para API: {e}")
 
 def inventario_loop():
     while True:
@@ -135,21 +182,26 @@ def executar_acoes():
                 if action == "start":
                     if dom.isActive() == 0:
                         dom.create()
-                        logger.info(f"✅ VM {dom.name()} iniciada com sucesso.")
+                        logger.info(f"✅ START executado na VM {dom.name()} ({uuid}).")
+                        report_action_to_api(uuid, "start", "success")
                     else:
-                        logger.info(f"ℹ️ VM {dom.name()} já está em execução.")
+                        logger.info(f"ℹ️ VM {dom.name()} ({uuid}) já estava em execução.")
+                        report_action_to_api(uuid, "start", "already_running")
 
                 elif action == "stop":
                     if dom.isActive() == 1:
                         try:
                             dom.shutdown()
-                            logger.info(f"✅ VM {dom.name()} desligada com sucesso.")
+                            logger.info(f"✅ STOP executado na VM {dom.name()} ({uuid}).")
+                            report_action_to_api(uuid, "stop", "success")
                         except libvirt.libvirtError as e:
                             logger.warning(f"⚠️ Shutdown falhou para {dom.name()}, tentando destroy: {e}")
                             dom.destroy()
-                            logger.info(f"✅ VM {dom.name()} forçada com destroy().")
+                            logger.info(f"✅ STOP (destroy) forçado na VM {dom.name()} ({uuid}).")
+                            report_action_to_api(uuid, "stop", "forced")
                     else:
-                        logger.info(f"ℹ️ VM {dom.name()} já está desligada.")
+                        logger.info(f"ℹ️ VM {dom.name()} ({uuid}) já estava desligada.")
+                        report_action_to_api(uuid, "stop", "already_stopped")
 
                 else:
                     logger.warning(f"⚠️ Ação desconhecida recebida: {action}")
