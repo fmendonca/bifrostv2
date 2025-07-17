@@ -15,6 +15,8 @@ func main() {
 
 	// Rotas específicas de ação (não registramos duplo /api/v1/vms/)
 	http.HandleFunc("/api/v1/vms/", vmActionRouter)
+	// Rota para atualizar VM
+	http.HandleFunc("/api/v1/vms/update", UpdateVMHandler)
 
 	log.Println("Bifrost API running on port 8080...")
 	log.Fatal(http.ListenAndServe(":8080", nil))

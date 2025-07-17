@@ -158,3 +158,25 @@ func extractUUID(path, suffix string) string {
 	uuid := strings.TrimSuffix(strings.TrimPrefix(path, "/api/v1/vms/"), suffix)
 	return strings.Trim(uuid, "/")
 }
+
+func UpdateVMHandler(w http.ResponseWriter, r *http.Request) {
+	var update struct {
+		UUID      string `json:"uuid"`
+		Action    string `json:"action"`
+		Result    string `json:"result"`
+		Timestamp string `json:"timestamp"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+		log.Printf("Error decoding update JSON: %v", err)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Exemplo simples: só loga (você pode expandir para atualizar no banco)
+	log.Printf("Update recebido: UUID=%s, Action=%s, Result=%s, Timestamp=%s",
+		update.UUID, update.Action, update.Result, update.Timestamp)
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "Update recebido")
+}
