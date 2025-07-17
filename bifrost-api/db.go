@@ -171,10 +171,16 @@ func GetAllVMs() ([]VM, error) {
 	var vms []VM
 	for rows.Next() {
 		var vm VM
+		var pendingAction sql.NullString
 		err := rows.Scan(&vm.Name, &vm.UUID, &vm.State, &vm.CPUAllocation, &vm.MemoryAllocation,
-			&vm.Disks, &vm.Interfaces, &vm.Metadata, &vm.Timestamp, &vm.PendingAction)
+			&vm.Disks, &vm.Interfaces, &vm.Metadata, &vm.Timestamp, &pendingAction)
 		if err != nil {
 			return nil, err
+		}
+		if pendingAction.Valid {
+			vm.PendingAction = pendingAction.String
+		} else {
+			vm.PendingAction = ""
 		}
 		vms = append(vms, vm)
 	}
@@ -194,10 +200,16 @@ func GetPendingActions() ([]VM, error) {
 	var vms []VM
 	for rows.Next() {
 		var vm VM
+		var pendingAction sql.NullString
 		err := rows.Scan(&vm.Name, &vm.UUID, &vm.State, &vm.CPUAllocation, &vm.MemoryAllocation,
-			&vm.Disks, &vm.Interfaces, &vm.Metadata, &vm.Timestamp, &vm.PendingAction)
+			&vm.Disks, &vm.Interfaces, &vm.Metadata, &vm.Timestamp, &pendingAction)
 		if err != nil {
 			return nil, err
+		}
+		if pendingAction.Valid {
+			vm.PendingAction = pendingAction.String
+		} else {
+			vm.PendingAction = ""
 		}
 		vms = append(vms, vm)
 	}
