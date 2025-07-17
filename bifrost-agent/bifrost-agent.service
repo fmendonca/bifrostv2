@@ -10,6 +10,7 @@ Environment=BIFROST_API_URL=http://192.168.86.129:8080/api/v1/vms
 Environment=REDIS_HOST=192.168.86.129
 Environment=REDIS_PORT=6379
 Environment=REDIS_PENDING_HASH=pending_actions
+Environment="BIFROST_INVENTORY_INTERVAL=60"
 StandardOutput=journal
 StandardError=journal
 

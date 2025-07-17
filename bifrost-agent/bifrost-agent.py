@@ -21,7 +21,7 @@ API_UPDATE_URL = os.getenv('BIFROST_API_UPDATE_URL', f"{API_URL}/update")
 REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
 REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
 REDIS_CHANNEL = os.getenv('REDIS_CHANNEL', 'vm-actions')
-INVENTORY_INTERVAL = int(os.getenv('BIFROST_INVENTORY_INTERVAL', '300'))  # padrão: 5 min
+INVENTORY_INTERVAL = int(os.getenv('BIFROST_INVENTORY_INTERVAL', '300'))
 
 # Conexão Redis
 redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT)
@@ -35,72 +35,83 @@ except redis.exceptions.ConnectionError as e:
 def coletar_dados_vm(conn):
     vms = []
     for dom in conn.listAllDomains():
-        try:
-            name = dom.name()
-            uuid = dom.UUIDString()
-            try:
-                state_code = dom.state()[0]
-                state = {
-                    1: "running",
-                    3: "paused",
-                    5: "shut off",
-                    7: "crashed"
-                }.get(state_code, f"unknown ({state_code})")
-            except Exception as e:
-                logger.warning(f"⚠️ {name}: falha em state() → {e}")
-                state = "unknown"
-
-            try:
-                cpu = int(dom.maxVcpus())
-            except Exception as e:
-                logger.warning(f"⚠️ {name}: falha em maxVcpus() → {e}")
-                cpu = 0
-
-            try:
-                memory = int(dom.maxMemory())
-            except Exception as e:
-                logger.warning(f"⚠️ {name}: falha em maxMemory() → {e}")
-                memory = 0
-
-            disks = []
-            try:
-                xml = dom.XMLDesc()
-                for disk in xml.split('<disk type=')[1:]:
-                    if 'file=' in disk:
-                        disk_path = disk.split('file=')[1].split("'")[1]
-                        disks.append({"path": disk_path})
-            except Exception as e:
-                logger.warning(f"⚠️ {name}: falha ao coletar discos → {e}")
-
-            interfaces = []
-            try:
-                if dom.isActive() == 1:
-                    iface_addrs = dom.interfaceAddresses(libvirt.VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE, 0)
-                    for iface in iface_addrs.values():
-                        interfaces.append({
-                            "mac": iface.get('hwaddr', ''),
-                            "addrs": [addr['addr'] for addr in iface.get('addrs', []) if 'addr' in addr]
-                        })
-            except Exception as e:
-                logger.warning(f"⚠️ {name}: falha ao coletar interfaces → {e}")
-
-            vm_info = {
-                "name": name,
-                "uuid": uuid,
-                "state": state,
-                "cpu_allocation": cpu,
-                "memory_allocation": memory,
-                "disks": disks,
-                "interfaces": interfaces,
-                "metadata": {},
-            }
-
+        vm_info = build_vm_info(dom)
+        if vm_info:
             vms.append(vm_info)
-
-        except Exception as e:
-            logger.error(f"❌ Erro geral ao coletar VM (skipada): {e}")
-
     return vms
+
+def coletar_dados_vm_por_uuid(conn, uuid):
+    try:
+        dom = conn.lookupByUUIDString(uuid)
+        vm_info = build_vm_info(dom)
+        return vm_info
+    except Exception as e:
+        logger.error(f"❌ Erro ao coletar VM {uuid} após ação: {e}")
+        return None
+
+def build_vm_info(dom):
+    try:
+        name = dom.name()
+        uuid = dom.UUIDString()
+        try:
+            state_code = dom.state()[0]
+            state = {
+                1: "running",
+                3: "paused",
+                5: "shut off",
+                7: "crashed"
+            }.get(state_code, f"unknown ({state_code})")
+        except Exception as e:
+            logger.warning(f"⚠️ {name}: falha em state() → {e}")
+            state = "unknown"
+
+        try:
+            cpu = int(dom.maxVcpus())
+        except Exception as e:
+            logger.warning(f"⚠️ {name}: falha em maxVcpus() → {e}")
+            cpu = 0
+
+        try:
+            memory = int(dom.maxMemory())
+        except Exception as e:
+            logger.warning(f"⚠️ {name}: falha em maxMemory() → {e}")
+            memory = 0
+
+        disks = []
+        try:
+            xml = dom.XMLDesc()
+            for disk in xml.split('<disk type=')[1:]:
+                if 'file=' in disk:
+                    disk_path = disk.split('file=')[1].split("'")[1]
+                    disks.append({"path": disk_path})
+        except Exception as e:
+            logger.warning(f"⚠️ {name}: falha ao coletar discos → {e}")
+
+        interfaces = []
+        try:
+            if dom.isActive() == 1:
+                iface_addrs = dom.interfaceAddresses(libvirt.VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE, 0)
+                for iface in iface_addrs.values():
+                    interfaces.append({
+                        "mac": iface.get('hwaddr', ''),
+                        "addrs": [addr['addr'] for addr in iface.get('addrs', []) if 'addr' in addr]
+                    })
+        except Exception as e:
+            logger.warning(f"⚠️ {name}: falha ao coletar interfaces → {e}")
+
+        return {
+            "name": name,
+            "uuid": uuid,
+            "state": state,
+            "cpu_allocation": cpu,
+            "memory_allocation": memory,
+            "disks": disks,
+            "interfaces": interfaces,
+            "metadata": {},
+        }
+    except Exception as e:
+        logger.error(f"❌ Erro geral ao coletar VM (skipada): {e}")
+        return None
 
 def enviar_dados_api(vms):
     payload = {
@@ -139,7 +150,7 @@ def inventario_loop():
             if conn is None:
                 logger.error("❌ Não foi possível conectar ao libvirt no inventário.")
             else:
-                logger.info("🔄 Coletando inventário...")
+                logger.info("🔄 Coletando inventário completo...")
                 vms = coletar_dados_vm(conn)
                 enviar_dados_api(vms)
         except Exception as e:
@@ -183,7 +194,7 @@ def executar_acoes():
                     if dom.isActive() == 0:
                         dom.create()
                         logger.info(f"✅ START executado na VM {dom.name()} ({uuid}).")
-                        report_action_to_api(uuid, "start", "success")
+                        report_action_to_api(uuid, "start", "running")
                     else:
                         logger.info(f"ℹ️ VM {dom.name()} ({uuid}) já estava em execução.")
                         report_action_to_api(uuid, "start", "already_running")
@@ -193,7 +204,7 @@ def executar_acoes():
                         try:
                             dom.shutdown()
                             logger.info(f"✅ STOP executado na VM {dom.name()} ({uuid}).")
-                            report_action_to_api(uuid, "stop", "success")
+                            report_action_to_api(uuid, "stop", "shut off")
                         except libvirt.libvirtError as e:
                             logger.warning(f"⚠️ Shutdown falhou para {dom.name()}, tentando destroy: {e}")
                             dom.destroy()
@@ -205,6 +216,12 @@ def executar_acoes():
 
                 else:
                     logger.warning(f"⚠️ Ação desconhecida recebida: {action}")
+                    continue
+
+                # 🔥 Coleta e envia inventário imediato só dessa VM
+                vm_info = coletar_dados_vm_por_uuid(conn, uuid)
+                if vm_info:
+                    enviar_dados_api([vm_info])
 
             except Exception as e:
                 logger.error(f"❌ Erro ao processar mensagem Redis: {e}")
@@ -218,7 +235,7 @@ def executar_acoes():
 if __name__ == "__main__":
     logger.info("🚀 Iniciando Bifrost Agent...")
 
-    # Thread do inventário
+    # Thread do inventário geral
     t1 = threading.Thread(target=inventario_loop, daemon=True)
     t1.start()
 
