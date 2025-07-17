@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import VMList from './pages/Compute/VMList';
-import VMDetails from './pages/Compute/VMDetails';
+import VMList from './pages/Compute/VmList';
+import VMDetails from './pages/Compute/VmDetails';
 import VMConsole from './pages/Compute/VMConsole';
 import Sidebar from './components/Sidebar';
 import Spinner from './components/Spinner';
