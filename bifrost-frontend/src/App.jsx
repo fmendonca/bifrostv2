@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import VmList from './components/VmList';
-import VmDetails from './components/VmDetails';
-import VMConsole from './components/VMConsole';
+import VmList from './pages/Compute/VmList';
+import VmDetails from './pages/Compute/VmDetails';
+import VMConsole from './pages/Compute/VMConsole';
 import Sidebar from './components/Sidebar';
 import Spinner from './components/Spinner';
 import { ToastContainer, toast } from 'react-toastify';
