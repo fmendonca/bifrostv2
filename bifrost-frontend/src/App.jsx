@@ -13,7 +13,10 @@ function App() {
       const res = await fetch(`${API_URL}/api/v1/vms`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      setVms(data);
+
+      // ordena por nome para manter o dashboard organizado
+      const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
+      setVms(sorted);
     } catch (err) {
       console.error('❌ Erro ao buscar VMs:', err);
     }
@@ -43,6 +46,13 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-100 p-4">
       <h1 className="text-3xl font-bold mb-4 text-center text-blue-700">Bifrost VM Dashboard</h1>
+
+      {loading && (
+        <div className="flex justify-center my-4">
+          <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row gap-4">
         <VmList vms={vms} onSelectVm={setSelectedVm} onAction={handleAction} loading={loading} />
         {selectedVm && <VmDetails vm={selectedVm} />}

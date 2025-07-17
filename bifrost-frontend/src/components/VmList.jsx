@@ -23,7 +23,11 @@ function VmList({ vms, onSelectVm, onAction, loading }) {
   });
 
   const toggleSortDirection = () => {
-    setSortAsc(!sortAsc);
+    setSortAsc((prev) => !prev);
+  };
+
+  const getSortLabel = () => {
+    return `${sortBy === 'name' ? 'Nome' : 'Data'} ${sortAsc ? '↑' : '↓'}`;
   };
 
   return (
@@ -41,24 +45,27 @@ function VmList({ vms, onSelectVm, onAction, loading }) {
           </select>
           <button
             onClick={toggleSortDirection}
-            className="text-gray-600 hover:text-gray-900"
+            className="text-gray-600 hover:text-gray-900 text-sm px-2 py-1 border rounded"
             title="Inverter ordem"
           >
-            {sortAsc ? '↑' : '↓'}
+            {getSortLabel()}
           </button>
         </div>
       </div>
 
-      <ul className="bg-white rounded shadow p-4">
+      <ul className="bg-white rounded shadow p-4 max-h-[70vh] overflow-y-auto">
         {sortedVms.map((vm) => (
-          <li key={vm.uuid} className="flex justify-between items-center mb-2 p-2 border-b">
+          <li
+            key={vm.uuid}
+            className="flex justify-between items-center mb-2 p-2 border-b hover:bg-gray-50 transition"
+          >
             <div
               className="flex flex-col cursor-pointer w-2/3"
               onClick={() => onSelectVm(vm)}
             >
               <div className="flex items-center space-x-2">
                 <span className={`w-3 h-3 rounded-full ${getStatusColor(vm.state)}`}></span>
-                <span className="font-semibold">{vm.name}</span>
+                <span className="font-semibold truncate">{vm.name}</span>
               </div>
               <span className="text-xs text-gray-500">
                 {vm.timestamp ? format(new Date(vm.timestamp), 'dd/MM/yyyy HH:mm:ss') : 'Sem data'}
@@ -66,14 +73,14 @@ function VmList({ vms, onSelectVm, onAction, loading }) {
             </div>
             <div className="flex space-x-1">
               <button
-                className="px-2 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50"
+                className="px-2 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50 hover:bg-green-700"
                 disabled={loading || vm.state.includes('running')}
                 onClick={() => onAction(vm.uuid, 'start')}
               >
                 Start
               </button>
               <button
-                className="px-2 py-1 bg-red-600 text-white rounded text-sm disabled:opacity-50"
+                className="px-2 py-1 bg-red-600 text-white rounded text-sm disabled:opacity-50 hover:bg-red-700"
                 disabled={loading || vm.state.includes('shut')}
                 onClick={() => onAction(vm.uuid, 'stop')}
               >
@@ -82,6 +89,9 @@ function VmList({ vms, onSelectVm, onAction, loading }) {
             </div>
           </li>
         ))}
+        {sortedVms.length === 0 && (
+          <li className="text-center text-gray-500 py-4">Nenhuma VM encontrada</li>
+        )}
       </ul>
     </div>
   );
