@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import VmList from './components/VmList';
 import VmDetails from './components/VmDetails';
 import Spinner from './components/Spinner';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 function App() {
   const [vms, setVms] = useState([]);
@@ -15,12 +17,11 @@ function App() {
       const res = await fetch(`${API_URL}/api/v1/vms`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-
-      // ordena por nome para manter o dashboard organizado
       const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
       setVms(sorted);
     } catch (err) {
       console.error('❌ Erro ao buscar VMs:', err);
+      toast.error('Erro ao buscar VMs');
     } finally {
       setInitialLoading(false);
     }
@@ -37,11 +38,11 @@ function App() {
     try {
       const res = await fetch(`${API_URL}/api/v1/vms/${uuid}/${action}`, { method: 'POST' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      alert(`✅ ${action.toUpperCase()} enviado para ${uuid}`);
+      toast.success(`✅ ${action.toUpperCase()} enviado para ${uuid}`);
       await fetchVMs();
     } catch (err) {
       console.error(`❌ Erro ao enviar ação ${action}:`, err);
-      alert(`❌ Erro ao executar ${action} na VM`);
+      toast.error(`❌ Erro ao executar ${action} na VM`);
     } finally {
       setLoading(false);
     }
@@ -49,15 +50,16 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-100 p-4">
-      <h1 className="text-3xl font-bold mb-4 text-center text-blue-700">Bifrost VM Dashboard</h1>
+      <ToastContainer position="top-right" autoClose={3000} />
+      <h1 className="text-3xl font-bold mb-4 text-center text-bifrostBlue">Bifrost VM Dashboard</h1>
 
       {initialLoading ? (
         <Spinner />
       ) : (
         <>
           {loading && (
-            <div className="flex justify-center my-4">
-              <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <div className="fixed inset-0 bg-black bg-opacity-25 flex justify-center items-center z-50">
+              <Spinner />
             </div>
           )}
 

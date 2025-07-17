@@ -10,16 +10,15 @@ function VmDetails({ vm }) {
   };
 
   const getStatusColor = (state) => {
-    if (state.includes('running')) return 'bg-green-500';
-    if (state.includes('shut')) return 'bg-red-500';
-    if (state.includes('paused')) return 'bg-yellow-500';
+    if (state.includes('running')) return 'bg-bifrostGreen';
+    if (state.includes('shut')) return 'bg-bifrostRed';
+    if (state.includes('paused')) return 'bg-bifrostYellow';
     return 'bg-gray-500';
   };
 
   return (
     <div className="w-full md:w-1/2 p-4 bg-white rounded shadow">
       <h2 className="text-xl font-semibold mb-4 border-b pb-2">Detalhes da VM</h2>
-
       <div className="space-y-1">
         <p><span className="font-semibold">Nome:</span> {vm.name}</p>
         <p><span className="font-semibold">UUID:</span> {vm.uuid}</p>
