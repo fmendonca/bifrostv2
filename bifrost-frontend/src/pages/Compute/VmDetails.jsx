@@ -1,6 +1,8 @@
 import React from 'react';
 
 function VMDetails({ vm }) {
+  if (!vm) return null;
+
   return (
     <div className="flex-1 bg-white shadow p-4 rounded">
       <h2 className="text-xl font-bold mb-4">{vm.name}</h2>
