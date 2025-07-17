@@ -16,7 +16,7 @@ var (
 // Inicializa conexão Redis usando variáveis de ambiente
 func InitRedis() {
 	host := getEnv("REDIS_HOST", "localhost")
-	port := getEnv("REDIS_PORT", "6379")
+	port := getEnv("", "6379")
 	password := getEnv("REDIS_PASSWORD", "")
 
 	addr := fmt.Sprintf("%s:%s", host, port)
