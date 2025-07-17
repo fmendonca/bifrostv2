@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import VmList from './components/VmList';
 import VmDetails from './components/VmDetails';
+import Spinner from './components/Spinner';
 
 function App() {
   const [vms, setVms] = useState([]);
   const [selectedVm, setSelectedVm] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const API_URL = process.env.REACT_APP_API_URL || '';
 
   const fetchVMs = async () => {
@@ -19,6 +21,8 @@ function App() {
       setVms(sorted);
     } catch (err) {
       console.error('❌ Erro ao buscar VMs:', err);
+    } finally {
+      setInitialLoading(false);
     }
   };
 
@@ -47,16 +51,22 @@ function App() {
     <div className="min-h-screen bg-gray-100 p-4">
       <h1 className="text-3xl font-bold mb-4 text-center text-blue-700">Bifrost VM Dashboard</h1>
 
-      {loading && (
-        <div className="flex justify-center my-4">
-          <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-        </div>
-      )}
+      {initialLoading ? (
+        <Spinner />
+      ) : (
+        <>
+          {loading && (
+            <div className="flex justify-center my-4">
+              <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          )}
 
-      <div className="flex flex-col md:flex-row gap-4">
-        <VmList vms={vms} onSelectVm={setSelectedVm} onAction={handleAction} loading={loading} />
-        {selectedVm && <VmDetails vm={selectedVm} />}
-      </div>
+          <div className="flex flex-col md:flex-row gap-4">
+            <VmList vms={vms} onSelectVm={setSelectedVm} onAction={handleAction} loading={loading} />
+            {selectedVm && <VmDetails vm={selectedVm} />}
+          </div>
+        </>
+      )}
     </div>
   );
 }
