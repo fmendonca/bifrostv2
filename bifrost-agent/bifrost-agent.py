@@ -8,10 +8,6 @@ import redis
 import threading
 from datetime import datetime
 
-# Silenciar mensagens C do libvirt no stderr
-libvirt.virEventRegisterDefaultImpl()
-libvirt.virSetErrorFunc(None, lambda ctx, err: None)
-
 # Configuração de log
 LOG_FILE = '/var/log/bifrost/bifrost-agent.log'
 os.makedirs('/var/log/bifrost', exist_ok=True)
@@ -45,7 +41,6 @@ def build_vm_info(dom):
         name = dom.name()
         uuid = dom.UUIDString()
 
-        # Estado
         state_code = dom.state()[0]
         state = {
             1: "running",
@@ -54,11 +49,9 @@ def build_vm_info(dom):
             7: "crashed"
         }.get(state_code, f"unknown ({state_code})")
 
-        # CPU e Memória
         cpu = dom.maxVcpus() if dom.isActive() else 0
         memory = dom.maxMemory() if dom.isActive() else 0
 
-        # Discos
         disks = []
         xml = dom.XMLDesc()
         for disk in xml.split('<disk type=')[1:]:
@@ -66,7 +59,6 @@ def build_vm_info(dom):
                 disk_path = disk.split('file=')[1].split("'")[1]
                 disks.append({"path": disk_path})
 
-        # Interfaces
         interfaces = []
         if dom.isActive():
             iface_addrs = dom.interfaceAddresses(libvirt.VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE, 0)
@@ -189,7 +181,7 @@ def executar_acoes():
                     except libvirt.libvirtError:
                         dom.destroy()
                         result = "forced"
-                        logger.info(f"✅ FORCED STOP (destroy) → {name} ({uuid})")
+                        logger.info(f"✅ FORCED STOP → {name} ({uuid})")
                 else:
                     result = "already_stopped"
             else:
@@ -198,7 +190,6 @@ def executar_acoes():
 
             report_action_to_api(uuid, action, result)
 
-            # Atualiza API só com a VM afetada
             vm_info = build_vm_info(dom)
             if vm_info:
                 enviar_dados_api([vm_info])
@@ -217,5 +208,5 @@ if __name__ == "__main__":
     t1 = threading.Thread(target=inventario_loop, daemon=True)
     t1.start()
 
-    # Listener Redis principal (fica no foreground)
+    # Listener Redis principal
     executar_acoes()
