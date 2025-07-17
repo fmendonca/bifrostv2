@@ -58,6 +58,18 @@ function App() {
     }
   };
 
+  const handleSelectVm = async (vm) => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/vms/${vm.uuid}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const detailedVm = await res.json();
+      setSelectedVm({ ...detailedVm, onAction: handleAction });
+    } catch (err) {
+      console.error('❌ Erro ao buscar detalhes da VM:', err);
+      toast.error('Erro ao buscar detalhes da VM');
+    }
+  };
+  
   return (
     <div className="min-h-screen bg-gray-100 flex">
       <Sidebar />
