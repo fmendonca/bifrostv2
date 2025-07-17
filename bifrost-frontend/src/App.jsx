@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import VmList from './components/VmList';
 import VmDetails from './components/VmDetails';
+import VMConsole from './components/VMConsole';
+import Sidebar from './components/Sidebar';
 import Spinner from './components/Spinner';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
