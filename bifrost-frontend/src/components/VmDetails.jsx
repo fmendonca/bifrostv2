@@ -19,28 +19,41 @@ function VmDetails({ vm }) {
   return (
     <div className="w-full md:w-1/2 p-4 bg-white rounded shadow">
       <h2 className="text-xl font-semibold mb-4 border-b pb-2">Detalhes da VM</h2>
-      <div className="space-y-1">
-        <p>
-          <span className="font-semibold">Nome:</span> {vm.name}
-        </p>
-        <p>
-          <span className="font-semibold">UUID:</span> {vm.uuid}
-        </p>
+      <div className="space-y-1 mb-4">
+        <p><span className="font-semibold">Nome:</span> {vm.name}</p>
+        <p><span className="font-semibold">UUID:</span> {vm.uuid}</p>
         <p className="flex items-center space-x-2">
           <span className="font-semibold">Estado:</span>
           <span className={`px-2 py-0.5 text-white text-xs rounded ${getStatusColor(vm.state)}`}>
             {vm.state}
           </span>
         </p>
-        <p>
-          <span className="font-semibold">CPU:</span> {vm.cpu_allocation}
-        </p>
-        <p>
-          <span className="font-semibold">Memória (MB):</span> {vm.memory_allocation}
-        </p>
+        <p><span className="font-semibold">CPU:</span> {vm.cpu_allocation}</p>
+        <p><span className="font-semibold">Memória (MB):</span> {vm.memory_allocation}</p>
       </div>
 
-      <div className="mt-4">
+      <div className="flex space-x-2 mb-4">
+        <button
+          onClick={() => vm.onAction(vm.uuid, 'start')}
+          className="bg-green-500 text-white px-4 py-2 rounded"
+        >
+          Start
+        </button>
+        <button
+          onClick={() => vm.onAction(vm.uuid, 'stop')}
+          className="bg-red-500 text-white px-4 py-2 rounded"
+        >
+          Stop
+        </button>
+        <button
+          onClick={() => vm.onAction(vm.uuid, 'restart')}
+          className="bg-yellow-500 text-white px-4 py-2 rounded"
+        >
+          Restart
+        </button>
+      </div>
+
+      <div>
         <p className="font-semibold mb-1">Discos:</p>
         <pre className="bg-gray-100 p-2 rounded text-sm max-h-40 overflow-y-auto">
           {safeJson(vm.disks)}
