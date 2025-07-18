@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import VmList from './components/VmList';
 import VmDetails from './components/VmDetails';
 import Sidebar from './components/Sidebar';
@@ -56,40 +56,38 @@ function App() {
   };
 
   return (
-    <Router>
-      <div className="flex min-h-screen bg-gray-100">
-        <Sidebar />
-        <div className="flex-1 p-4">
-          <ToastContainer position="top-right" autoClose={3000} />
-          {initialLoading ? (
-            <Spinner />
-          ) : (
-            <Routes>
-              <Route
-                path="/"
-                element={
-                  <>
-                    <h1 className="text-3xl font-bold mb-4 text-center text-bifrostBlue">
-                      Bifrost VM Dashboard
-                    </h1>
-                    {loading && (
-                      <div className="fixed inset-0 bg-black bg-opacity-25 flex justify-center items-center z-50">
-                        <Spinner />
-                      </div>
-                    )}
-                    <div className="flex flex-col md:flex-row gap-4">
-                      <VmList vms={vms} onSelectVm={setSelectedVm} onAction={handleAction} loading={loading} />
-                      {selectedVm && <VmDetails vm={{ ...selectedVm, onAction: handleAction }} />}
+    <div className="flex min-h-screen bg-gray-100">
+      <Sidebar />
+      <div className="flex-1 p-4">
+        <ToastContainer position="top-right" autoClose={3000} />
+        {initialLoading ? (
+          <Spinner />
+        ) : (
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <>
+                  <h1 className="text-3xl font-bold mb-4 text-center text-bifrostBlue">
+                    Bifrost VM Dashboard
+                  </h1>
+                  {loading && (
+                    <div className="fixed inset-0 bg-black bg-opacity-25 flex justify-center items-center z-50">
+                      <Spinner />
                     </div>
-                  </>
-                }
-              />
-              <Route path="/hosts" element={<HostsPage apiUrl={API_URL} />} />
-            </Routes>
-          )}
-        </div>
+                  )}
+                  <div className="flex flex-col md:flex-row gap-4">
+                    <VmList vms={vms} onSelectVm={setSelectedVm} onAction={handleAction} loading={loading} />
+                    {selectedVm && <VmDetails vm={{ ...selectedVm, onAction: handleAction }} />}
+                  </div>
+                </>
+              }
+            />
+            <Route path="/hosts" element={<HostsPage apiUrl={API_URL} />} />
+          </Routes>
+        )}
       </div>
-    </Router>
+    </div>
   );
 }
 
