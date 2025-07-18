@@ -1,25 +1,31 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { Home, Server, Cpu, Sun, Moon, Menu, X } from 'lucide-react';
+import { useDarkMode } from './DarkModeContext';
 
 function Sidebar() {
   const location = useLocation();
+  const { dark, toggleDark } = useDarkMode();
+  const [open, setOpen] = useState(true);
 
   const menuItems = [
-    { path: '/', label: '🏠 Home' },
-    { path: '/vms', label: '🖥️ VMs' },
-    { path: '/hosts', label: '🛠️ Hosts' },
-    // { path: '/storage', label: '💾 Storage' },
-    // { path: '/network', label: '🌐 Network' },
-    // { path: '/logs', label: '📜 Logs' },
+    { path: '/', label: 'Home', icon: <Home size={18} /> },
+    { path: '/vms', label: 'VMs', icon: <Cpu size={18} /> },
+    { path: '/hosts', label: 'Hosts', icon: <Server size={18} /> },
   ];
 
   return (
-    <div className="h-full w-64 bg-gray-900 text-gray-200 flex flex-col shadow-lg">
-      <div className="p-6 text-2xl font-extrabold text-center text-bifrostBlue border-b border-gray-700">
-        ⚡ Bifrost
+    <div className={`h-screen ${open ? 'w-64' : 'w-16'} bg-gray-900 text-gray-200 flex flex-col transition-all duration-300 shadow-lg`}>
+      <div className="flex justify-between items-center p-4 border-b border-gray-700">
+        <span className="text-xl font-extrabold text-bifrostBlue">
+          {open ? '⚡ Bifrost' : '⚡'}
+        </span>
+        <button onClick={() => setOpen(!open)} className="text-gray-400 hover:text-white">
+          {open ? <X size={20} /> : <Menu size={20} />}
+        </button>
       </div>
 
-      <nav className="flex-1 p-4 space-y-1">
+      <nav className="flex-1 p-2 space-y-1">
         {menuItems.map((item) => {
           const active = location.pathname === item.path;
           return (
@@ -32,15 +38,17 @@ function Sidebar() {
                   : 'hover:bg-gray-700 hover:text-white'
               }`}
             >
-              <span className="text-lg mr-2">{item.label.split(' ')[0]}</span>
-              <span className="text-sm font-medium">{item.label.split(' ')[1]}</span>
+              <span>{item.icon}</span>
+              {open && <span className="ml-3 text-sm font-medium">{item.label}</span>}
             </Link>
           );
         })}
       </nav>
 
-      <div className="p-4 text-center text-xs text-gray-500 border-t border-gray-700">
-        v1.0.0
+      <div className="p-4 flex justify-center border-t border-gray-700">
+        <button onClick={toggleDark} className="text-gray-400 hover:text-white">
+          {dark ? <Sun size={20} /> : <Moon size={20} />}
+        </button>
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import Spinner from './components/Spinner';
 import HostsPage from './components/HostsPage';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { DarkModeProvider } from './components/DarkModeContext';
 
 function App() {
   const [vms, setVms] = useState([]);
@@ -85,59 +86,61 @@ function App() {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-100">
-      <Sidebar />
-      <div className="flex-1 p-4">
-        <ToastContainer position="top-right" autoClose={3000} />
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <div className="flex justify-center items-center h-full">
-                <h1 className="text-4xl font-bold text-bifrostBlue">
-                  Bem-vindo ao Bifrost Dashboard 🚀
-                </h1>
-              </div>
-            }
-          />
-          <Route
-            path="/vms"
-            element={
-              <>
-                <h1 className="text-3xl font-bold mb-4 text-center text-bifrostBlue">
-                  Lista de VMs
-                </h1>
-                {initialLoading ? (
-                  <Spinner />
-                ) : (
-                  <>
-                    {loading && (
-                      <div className="fixed inset-0 bg-black bg-opacity-25 flex justify-center items-center z-50">
-                        <Spinner />
-                      </div>
-                    )}
-                    <div className="flex flex-col md:flex-row gap-4">
-                      <VmList
-                        vms={vms}
-                        onSelectVm={setSelectedVm}
-                        onAction={handleAction}
-                        loading={loading}
-                      />
-                      {selectedVm && (
-                        <VmDetails
-                          vm={{ ...selectedVm, onAction: handleAction }}
-                        />
+    <DarkModeProvider>
+      <div className="flex min-h-screen bg-gray-100 dark:bg-gray-800 transition-colors">
+        <Sidebar />
+        <div className="flex-1 p-4">
+          <ToastContainer position="top-right" autoClose={3000} />
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <div className="flex justify-center items-center h-full">
+                  <h1 className="text-4xl font-bold text-bifrostBlue dark:text-white">
+                    Bem-vindo ao Bifrost Dashboard 🚀
+                  </h1>
+                </div>
+              }
+            />
+            <Route
+              path="/vms"
+              element={
+                <>
+                  <h1 className="text-3xl font-bold mb-4 text-center text-bifrostBlue dark:text-white">
+                    Lista de VMs
+                  </h1>
+                  {initialLoading ? (
+                    <Spinner />
+                  ) : (
+                    <>
+                      {loading && (
+                        <div className="fixed inset-0 bg-black bg-opacity-25 flex justify-center items-center z-50">
+                          <Spinner />
+                        </div>
                       )}
-                    </div>
-                  </>
-                )}
-              </>
-            }
-          />
-          <Route path="/hosts" element={<HostsPage apiUrl={API_URL} />} />
-        </Routes>
+                      <div className="flex flex-col md:flex-row gap-4">
+                        <VmList
+                          vms={vms}
+                          onSelectVm={setSelectedVm}
+                          onAction={handleAction}
+                          loading={loading}
+                        />
+                        {selectedVm && (
+                          <VmDetails
+                            vm={{ ...selectedVm, onAction: handleAction }}
+                          />
+                        )}
+                      </div>
+                    </>
+                  )}
+                </>
+              }
+            />
+            <Route path="/hosts" element={<HostsPage apiUrl={API_URL} />} />
+          </Routes>
+        </div>
       </div>
-    </div>
+    </DarkModeProvider>
   );
 }
 
