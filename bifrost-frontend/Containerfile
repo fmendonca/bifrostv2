@@ -4,15 +4,11 @@ FROM registry.access.redhat.com/ubi9/nodejs-18 AS builder
 WORKDIR /app
 USER 0
 
-ARG REACT_APP_API_URL
-
 COPY package.json ./
 RUN npm install
 
 COPY . .
-
-RUN echo "Building with REACT_APP_API_URL=${REACT_APP_API_URL}" && \
-    REACT_APP_API_URL=${REACT_APP_API_URL} npm run build
+RUN npm run build
 
 # Stage 2: nginx minimal
 FROM registry.access.redhat.com/ubi9/nginx-120
@@ -25,7 +21,12 @@ RUN rm -rf /usr/share/nginx/html/*
 # Copia build gerado
 COPY --from=builder /app/build/ /usr/share/nginx/html/
 
-# Corrige permissões apenas no html padrão e dirs internos
+# Script de env runtime
+COPY ./env.template.js /usr/share/nginx/html/env.template.js
+COPY ./entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Corrige permissões
 RUN chown -R nginx:nginx /usr/share/nginx/html /var/lib/nginx /var/log/nginx /run && \
     find /usr/share/nginx/html -type f -exec chmod 644 {} \; && \
     find /usr/share/nginx/html -type d -exec chmod 755 {} \;
@@ -36,4 +37,5 @@ USER nginx
 
 EXPOSE 8080
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]

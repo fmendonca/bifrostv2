@@ -13,8 +13,9 @@ function App() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [apiKey, setApiKey] = useState('');
 
-  const API_URL = process.env.REACT_APP_API_URL || '';
-  const FRONTEND_SECRET = process.env.REACT_APP_FRONTEND_SECRET || 'meuSegredoForte';
+  // ✅ Lê variáveis runtime do env.js
+  const API_URL = window._env_?.REACT_APP_API_URL || '';
+  const FRONTEND_SECRET = window._env_?.REACT_APP_FRONTEND_SECRET || 'meuSegredoForte';
 
   const fetchApiKey = async () => {
     try {
