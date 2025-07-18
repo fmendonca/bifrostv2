@@ -13,13 +13,13 @@ import (
 var DB *sql.DB
 
 type Host struct {
-	ID           int
-	Name         string
-	UUID         string
-	APIKey       string
-	RedisChannel string
-	Status       string
-	LastSeen     string
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
+	UUID         string `json:"uuid"`
+	APIKey       string `json:"api_key"`
+	RedisChannel string `json:"redis_channel"`
+	Status       string `json:"status"`
+	LastSeen     string `json:"last_seen"`
 }
 
 type VM struct {
@@ -53,7 +53,7 @@ func InitDB() {
 	if err = DB.Ping(); err != nil {
 		log.Fatal("Database ping failed:", err)
 	}
-	log.Println("✅ Connected to PostgreSQL database")
+	log.Println("✅ Connected to PostgreSQL")
 	autoMigrate()
 }
 
@@ -88,17 +88,17 @@ func autoMigrate() {
 			log.Fatal("Auto-migrate failed:", err)
 		}
 	}
-	log.Println("✅ Auto-migrate completed")
+	log.Println("✅ Auto-migrate done")
 }
 
 func RegisterHost(name string) (*Host, error) {
-	id := uuid.New().String()
-	key := uuid.New().String()
-	channel := fmt.Sprintf("vm-actions-%s", id)
+	hostUUID := uuid.New().String()
+	apiKey := uuid.New().String()
+	channel := fmt.Sprintf("vm-actions-%s", name)
 	_, err := DB.Exec(`INSERT INTO hosts (name, uuid, api_key, redis_channel)
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (name) DO UPDATE SET last_seen = NOW(), status = 'active'`,
-		name, id, key, channel)
+		name, hostUUID, apiKey, channel)
 	if err != nil {
 		return nil, err
 	}
@@ -123,17 +123,11 @@ func InsertOrUpdateVM(vm VM) (string, error) {
 	_, err := DB.Exec(`
 		INSERT INTO vms 
 		(name, uuid, state, cpu_allocation, memory_allocation, disks, interfaces, metadata, timestamp, pending_action, host_uuid)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 		ON CONFLICT (uuid) DO UPDATE SET 
-			name=EXCLUDED.name,
-			state=EXCLUDED.state,
-			cpu_allocation=EXCLUDED.cpu_allocation,
-			memory_allocation=EXCLUDED.memory_allocation,
-			disks=EXCLUDED.disks,
-			interfaces=EXCLUDED.interfaces,
-			metadata=EXCLUDED.metadata,
-			timestamp=EXCLUDED.timestamp,
-			pending_action=EXCLUDED.pending_action,
+			name=EXCLUDED.name, state=EXCLUDED.state, cpu_allocation=EXCLUDED.cpu_allocation,
+			memory_allocation=EXCLUDED.memory_allocation, disks=EXCLUDED.disks, interfaces=EXCLUDED.interfaces,
+			metadata=EXCLUDED.metadata, timestamp=EXCLUDED.timestamp, pending_action=EXCLUDED.pending_action,
 			host_uuid=EXCLUDED.host_uuid
 	`, vm.Name, vm.UUID, vm.State, vm.CPUAllocation, vm.MemoryAllocation,
 		vm.Disks, vm.Interfaces, vm.Metadata, vm.Timestamp, vm.PendingAction, vm.HostUUID)
@@ -144,10 +138,7 @@ func InsertOrUpdateVM(vm VM) (string, error) {
 }
 
 func GetAllVMs() ([]VM, error) {
-	rows, err := DB.Query(`
-		SELECT name, uuid, state, cpu_allocation, memory_allocation, disks, interfaces, metadata, timestamp, pending_action, host_uuid
-		FROM vms ORDER BY timestamp DESC LIMIT 100
-	`)
+	rows, err := DB.Query(`SELECT name, uuid, state, cpu_allocation, memory_allocation, disks, interfaces, metadata, timestamp, pending_action, host_uuid FROM vms ORDER BY timestamp DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -167,9 +158,6 @@ func GetAllVMs() ([]VM, error) {
 }
 
 func UpdateVMState(uuid string, state string) error {
-	_, err := DB.Exec(`
-		UPDATE vms SET state=$1, pending_action=NULL, timestamp=NOW()
-		WHERE uuid=$2
-	`, state, uuid)
+	_, err := DB.Exec(`UPDATE vms SET state=$1, pending_action=NULL, timestamp=NOW() WHERE uuid=$2`, state, uuid)
 	return err
 }
