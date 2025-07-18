@@ -11,10 +11,11 @@ func main() {
 	InitRedis()
 	defer DB.Close()
 
-	// Rotas públicas
+	// 🔓 Rotas públicas
 	http.HandleFunc("/api/v1/agent/register", RegisterHostHandler)
+	http.HandleFunc("/api/v1/agent/frontend-key", FrontendKeyHandler)
 
-	// Rotas autenticadas
+	// 🔒 Rotas autenticadas
 	http.HandleFunc("/api/v1/vms", AuthMiddleware(VMsHandler))
 	http.HandleFunc("/api/v1/vms/update", AuthMiddleware(UpdateVMHandler))
 	http.HandleFunc("/api/v1/vms/", AuthMiddleware(vmActionRouter))
