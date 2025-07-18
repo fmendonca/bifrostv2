@@ -6,11 +6,21 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/lib/pq"
+	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 )
 
 var DB *sql.DB
+
+type Host struct {
+	ID           int
+	Name         string
+	UUID         string
+	APIKey       string
+	RedisChannel string
+	Status       string
+	LastSeen     string
+}
 
 type VM struct {
 	Name             string          `json:"name"`
@@ -23,6 +33,7 @@ type VM struct {
 	Metadata         json.RawMessage `json:"metadata"`
 	Timestamp        string          `json:"timestamp"`
 	PendingAction    string          `json:"pending_action,omitempty"`
+	HostUUID         string          `json:"host_uuid"`
 }
 
 func InitDB() {
@@ -35,26 +46,6 @@ func InitDB() {
 	dbname := getEnv("DB_NAME", "bifrost")
 	sslmode := getEnv("DB_SSLMODE", "disable")
 
-	adminConnStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=postgres sslmode=%s",
-		host, port, user, password, sslmode)
-
-	adminDB, err := sql.Open("postgres", adminConnStr)
-	if err != nil {
-		log.Fatal("Admin DB connection failed:", err)
-	}
-	defer adminDB.Close()
-
-	_, err = adminDB.Exec(fmt.Sprintf("CREATE DATABASE %s", dbname))
-	if err != nil {
-		if pgErr, ok := err.(*pq.Error); ok && pgErr.Code == "42P04" {
-			log.Printf("Database %s already exists.", dbname)
-		} else {
-			log.Fatalf("Failed to create database %s: %v", dbname, err)
-		}
-	} else {
-		log.Printf("Database %s created successfully.", dbname)
-	}
-
 	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		host, port, user, password, dbname, sslmode)
 
@@ -62,188 +53,71 @@ func InitDB() {
 	if err != nil {
 		log.Fatal("Database connection failed:", err)
 	}
-
 	if err = DB.Ping(); err != nil {
 		log.Fatal("Database ping failed:", err)
 	}
-
 	log.Println("Connected to PostgreSQL database:", dbname)
 
-	err = createTableIfNotExists()
-	if err != nil {
-		log.Fatal("Failed to create table:", err)
-	}
-
-	err = autoMigrate()
-	if err != nil {
-		log.Fatal("Failed to auto-migrate table:", err)
-	}
-
-	log.Println("Table checked/created and auto-migrated.")
+	autoMigrate()
 }
 
-func createTableIfNotExists() error {
-	query := `
-    CREATE TABLE IF NOT EXISTS vms (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        uuid UUID NOT NULL UNIQUE,
-        state TEXT,
-        cpu_allocation INTEGER,
-        memory_allocation BIGINT,
-        disks JSONB,
-        interfaces JSONB,
-        metadata JSONB,
-        timestamp TIMESTAMP WITH TIME ZONE,
-        pending_action TEXT
-    );`
-	_, err := DB.Exec(query)
-	return err
-}
-
-func autoMigrate() error {
-	// Check if 'pending_action' exists; add if missing
-	var columnName string
-	err := DB.QueryRow(`
-        SELECT column_name
-        FROM information_schema.columns
-        WHERE table_name='vms' AND column_name='pending_action'
-    `).Scan(&columnName)
-
-	if err == sql.ErrNoRows {
-		log.Println("Column 'pending_action' missing, adding...")
-		_, err := DB.Exec(`ALTER TABLE vms ADD COLUMN pending_action TEXT`)
-		if err != nil {
-			return fmt.Errorf("failed to add column pending_action: %v", err)
+func autoMigrate() {
+	queries := []string{
+		`CREATE TABLE IF NOT EXISTS hosts (
+			id SERIAL PRIMARY KEY,
+			name TEXT UNIQUE NOT NULL,
+			uuid UUID UNIQUE NOT NULL,
+			api_key TEXT UNIQUE NOT NULL,
+			redis_channel TEXT NOT NULL,
+			status TEXT DEFAULT 'active',
+			last_seen TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+		);`,
+		`CREATE TABLE IF NOT EXISTS vms (
+			id SERIAL PRIMARY KEY,
+			name TEXT NOT NULL,
+			uuid UUID NOT NULL UNIQUE,
+			state TEXT,
+			cpu_allocation INTEGER,
+			memory_allocation BIGINT,
+			disks JSONB,
+			interfaces JSONB,
+			metadata JSONB,
+			timestamp TIMESTAMP WITH TIME ZONE,
+			pending_action TEXT,
+			host_uuid UUID REFERENCES hosts(uuid)
+		);`,
+	}
+	for _, q := range queries {
+		if _, err := DB.Exec(q); err != nil {
+			log.Fatal("Auto-migrate failed:", err)
 		}
-		log.Println("Column 'pending_action' added successfully.")
-	} else if err != nil {
-		return fmt.Errorf("failed to check columns: %v", err)
-	} else {
-		log.Println("Column 'pending_action' already exists.")
 	}
-	return nil
+	log.Println("Auto-migrate completed.")
 }
 
-func InsertOrUpdateVM(vm VM) (string, error) {
-	res, err := DB.Exec(`
-        INSERT INTO vms 
-        (name, uuid, state, cpu_allocation, memory_allocation, disks, interfaces, metadata, timestamp, pending_action)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        ON CONFLICT (uuid) DO UPDATE SET 
-            name = EXCLUDED.name,
-            state = EXCLUDED.state,
-            cpu_allocation = EXCLUDED.cpu_allocation,
-            memory_allocation = EXCLUDED.memory_allocation,
-            disks = EXCLUDED.disks,
-            interfaces = EXCLUDED.interfaces,
-            metadata = EXCLUDED.metadata,
-            timestamp = EXCLUDED.timestamp,
-            pending_action = EXCLUDED.pending_action
-    `, vm.Name, vm.UUID, vm.State, vm.CPUAllocation, vm.MemoryAllocation,
-		vm.Disks, vm.Interfaces, vm.Metadata, vm.Timestamp, vm.PendingAction)
-
-	if err != nil {
-		return "", err
-	}
-
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return "", err
-	}
-
-	if rows == 1 {
-		return "inserted/updated", nil
-	}
-	return "unchanged", nil
-}
-
-func GetAllVMs() ([]VM, error) {
-	rows, err := DB.Query(`
-        SELECT name, uuid, state, cpu_allocation, memory_allocation, disks, interfaces, metadata, timestamp, pending_action
-        FROM vms ORDER BY timestamp DESC LIMIT 100
-    `)
+func RegisterHost(name string) (*Host, error) {
+	id := uuid.New().String()
+	key := uuid.New().String()
+	channel := fmt.Sprintf("vm-actions-%s", id)
+	_, err := DB.Exec(`INSERT INTO hosts (name, uuid, api_key, redis_channel) VALUES ($1, $2, $3, $4)
+	ON CONFLICT (name) DO UPDATE SET last_seen = NOW(), status = 'active'`,
+		name, id, key, channel)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var vms []VM
-	for rows.Next() {
-		var vm VM
-		var pendingAction sql.NullString
-		err := rows.Scan(&vm.Name, &vm.UUID, &vm.State, &vm.CPUAllocation, &vm.MemoryAllocation,
-			&vm.Disks, &vm.Interfaces, &vm.Metadata, &vm.Timestamp, &pendingAction)
-		if err != nil {
-			return nil, err
-		}
-		if pendingAction.Valid {
-			vm.PendingAction = pendingAction.String
-		} else {
-			vm.PendingAction = ""
-		}
-		vms = append(vms, vm)
-	}
-	return vms, nil
+	return GetHostByName(name)
 }
 
-func GetPendingActions() ([]VM, error) {
-	rows, err := DB.Query(`
-        SELECT name, uuid, state, cpu_allocation, memory_allocation, disks, interfaces, metadata, timestamp, pending_action
-        FROM vms WHERE pending_action IS NOT NULL
-    `)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var vms []VM
-	for rows.Next() {
-		var vm VM
-		var pendingAction sql.NullString
-		err := rows.Scan(&vm.Name, &vm.UUID, &vm.State, &vm.CPUAllocation, &vm.MemoryAllocation,
-			&vm.Disks, &vm.Interfaces, &vm.Metadata, &vm.Timestamp, &pendingAction)
-		if err != nil {
-			return nil, err
-		}
-		if pendingAction.Valid {
-			vm.PendingAction = pendingAction.String
-		} else {
-			vm.PendingAction = ""
-		}
-		vms = append(vms, vm)
-	}
-	return vms, nil
+func GetHostByAPIKey(apiKey string) (*Host, error) {
+	row := DB.QueryRow(`SELECT id, name, uuid, api_key, redis_channel, status, last_seen FROM hosts WHERE api_key = $1`, apiKey)
+	var h Host
+	err := row.Scan(&h.ID, &h.Name, &h.UUID, &h.APIKey, &h.RedisChannel, &h.Status, &h.LastSeen)
+	return &h, err
 }
 
-func UpdateVMState(uuid string, state string) error {
-	_, err := DB.Exec(`
-        UPDATE vms 
-        SET state = $1, pending_action = NULL, timestamp = NOW()
-        WHERE uuid = $2
-    `, state, uuid)
-	return err
-}
-
-func MarkPendingAction(uuid string, action string) error {
-	_, err := DB.Exec(`
-        UPDATE vms 
-        SET pending_action = $1
-        WHERE uuid = $2
-    `, action, uuid)
-	return err
-}
-
-func UpdateVMStatus(uuid, action, result, timestamp string) error {
-	_, err := DB.Exec(`
-        UPDATE vms
-        SET state = $1, pending_action = NULL, timestamp = $2
-        WHERE uuid = $3
-    `, result, timestamp, uuid)
-	if err != nil {
-		return fmt.Errorf("failed to update VM %s status: %w", uuid, err)
-	}
-
-	log.Printf("✅ Banco atualizado: VM %s -> state=%s at %s", uuid, result, timestamp)
-	return nil
+func GetHostByName(name string) (*Host, error) {
+	row := DB.QueryRow(`SELECT id, name, uuid, api_key, redis_channel, status, last_seen FROM hosts WHERE name = $1`, name)
+	var h Host
+	err := row.Scan(&h.ID, &h.Name, &h.UUID, &h.APIKey, &h.RedisChannel, &h.Status, &h.LastSeen)
+	return &h, err
 }

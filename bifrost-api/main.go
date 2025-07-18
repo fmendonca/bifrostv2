@@ -11,14 +11,13 @@ func main() {
 	InitRedis()
 	defer DB.Close()
 
-	// Rotas principais
-	http.HandleFunc("/api/v1/vms", VMsHandler)
+	// Public route: agent registration
+	http.HandleFunc("/api/v1/agent/register", RegisterHostHandler)
 
-	// Rota para atualizar VM (tem que vir ANTES para não colidir)
-	http.HandleFunc("/api/v1/vms/update", UpdateVMHandler)
-
-	// Rotas específicas de ação (start/stop)
-	http.HandleFunc("/api/v1/vms/", vmActionRouter)
+	// Protected routes (with auth)
+	http.HandleFunc("/api/v1/vms", AuthMiddleware(VMsHandler))
+	http.HandleFunc("/api/v1/vms/update", AuthMiddleware(UpdateVMHandler))
+	http.HandleFunc("/api/v1/vms/", AuthMiddleware(vmActionRouter))
 
 	log.Println("🚀 Bifrost API running on port 8080...")
 	log.Fatal(http.ListenAndServe(":8080", nil))
@@ -26,13 +25,9 @@ func main() {
 
 func vmActionRouter(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
-
-	switch {
-	case strings.HasSuffix(path, "/start"):
-		StartVMHandler(w, r)
-	case strings.HasSuffix(path, "/stop"):
-		StopVMHandler(w, r)
-	default:
+	if strings.HasSuffix(path, "/start") || strings.HasSuffix(path, "/stop") {
+		StartStopHandler(w, r)
+	} else {
 		http.NotFound(w, r)
 	}
 }

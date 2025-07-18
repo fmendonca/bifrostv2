@@ -14,10 +14,40 @@ type Payload struct {
 	VMs       []VM   `json:"vms"`
 }
 
-func enableCORS(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+func RegisterHostHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		http.Error(w, "Invalid name", http.StatusBadRequest)
+		return
+	}
+	host, err := RegisterHost(req.Name)
+	if err != nil {
+		log.Printf("DB error registering host: %v", err)
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("✅ Host registered: %s (UUID: %s)", host.Name, host.UUID)
+	json.NewEncoder(w).Encode(host)
+}
+
+func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		apiKey := r.Header.Get("X-API-KEY")
+		if apiKey == "" {
+			http.Error(w, "Missing API key", http.StatusUnauthorized)
+			return
+		}
+		host, err := GetHostByAPIKey(apiKey)
+		if err != nil {
+			http.Error(w, "Invalid API key", http.StatusUnauthorized)
+			return
+		}
+		r.Header.Set("X-HOST-UUID", host.UUID)
+		r.Header.Set("X-REDIS-CHANNEL", host.RedisChannel)
+		next(w, r)
+	}
 }
 
 func VMsHandler(w http.ResponseWriter, r *http.Request) {
@@ -26,133 +56,56 @@ func VMsHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-
 	start := time.Now()
-	log.Printf("Incoming request: %s %s", r.Method, r.URL.Path)
+	hostUUID := r.Header.Get("X-HOST-UUID")
 
 	switch r.Method {
 	case http.MethodPost:
-		handlePostVMs(w, r)
+		var payload Payload
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+		count := 0
+		for _, vm := range payload.VMs {
+			vm.HostUUID = hostUUID
+			if _, err := InsertOrUpdateVM(vm); err != nil {
+				log.Printf("❌ Error saving VM %s: %v", vm.Name, err)
+				continue
+			}
+			count++
+		}
+		fmt.Fprintf(w, "Processed %d VMs", count)
+		log.Printf("✅ POST /api/v1/vms: %d VMs processed", count)
 	case http.MethodGet:
-		handleGetVMs(w, r)
+		vms, err := GetAllVMs()
+		if err != nil {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(vms)
 	default:
-		log.Printf("Method not allowed: %s", r.Method)
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
-
-	duration := time.Since(start)
-	log.Printf("Handled %s %s in %v", r.Method, r.URL.Path, duration)
+	log.Printf("Handled %s /api/v1/vms in %v", r.Method, time.Since(start))
 }
 
-func handlePostVMs(w http.ResponseWriter, r *http.Request) {
-	var payload Payload
-	err := json.NewDecoder(r.Body).Decode(&payload)
-	if err != nil {
-		log.Printf("Error decoding JSON: %v", err)
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+func StartStopHandler(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 6 {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
 		return
 	}
+	uuid := parts[4]
+	action := parts[5]
+	channel := r.Header.Get("X-REDIS-CHANNEL")
 
-	count := 0
-	for _, vm := range payload.VMs {
-		vm.Timestamp = payload.Timestamp
-		action, err := InsertOrUpdateVM(vm)
-		if err != nil {
-			log.Printf("Failed to insert/update VM %s: %v", vm.Name, err)
-			continue
-		}
-		log.Printf("%s VM: %s (UUID: %s)", action, vm.Name, vm.UUID)
-		count++
-	}
-
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "Processed %d VMs", count)
-	log.Printf("POST /api/v1/vms: Processed %d VMs", count)
-}
-
-func handleGetVMs(w http.ResponseWriter, r *http.Request) {
-	vms, err := GetAllVMs()
-	if err != nil {
-		log.Printf("Database error on GET: %v", err)
-		http.Error(w, "Database error", http.StatusInternalServerError)
+	if err := PublishAction(channel, uuid, action); err != nil {
+		http.Error(w, "Failed to publish action", http.StatusInternalServerError)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(vms)
-	if err != nil {
-		log.Printf("Error encoding response: %v", err)
-		http.Error(w, "Response encoding error", http.StatusInternalServerError)
-		return
-	}
-
-	log.Printf("GET /api/v1/vms: Returned %d VMs", len(vms))
-}
-
-func StartVMHandler(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	uuid := extractUUID(r.URL.Path, "/start")
-	if uuid == "" {
-		http.Error(w, "Invalid UUID", http.StatusBadRequest)
-		return
-	}
-
-	if err := MarkPendingAction(uuid, "start"); err != nil {
-		log.Printf("Failed to mark start action for VM %s: %v", uuid, err)
-		http.Error(w, "Failed to mark start action", http.StatusInternalServerError)
-		return
-	}
-
-	if err := PublishAction(uuid, "start"); err != nil {
-		log.Printf("Failed to publish start action for VM %s: %v", uuid, err)
-		http.Error(w, "Failed to publish start action", http.StatusInternalServerError)
-		return
-	}
-
-	log.Printf("Marked and published start action for VM %s", uuid)
-	fmt.Fprintf(w, "VM %s marked and published for start", uuid)
-}
-
-func StopVMHandler(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	uuid := extractUUID(r.URL.Path, "/stop")
-	if uuid == "" {
-		http.Error(w, "Invalid UUID", http.StatusBadRequest)
-		return
-	}
-
-	if err := MarkPendingAction(uuid, "stop"); err != nil {
-		log.Printf("Failed to mark stop action for VM %s: %v", uuid, err)
-		http.Error(w, "Failed to mark stop action", http.StatusInternalServerError)
-		return
-	}
-
-	if err := PublishAction(uuid, "stop"); err != nil {
-		log.Printf("Failed to publish stop action for VM %s: %v", uuid, err)
-		http.Error(w, "Failed to publish stop action", http.StatusInternalServerError)
-		return
-	}
-
-	log.Printf("Marked and published stop action for VM %s", uuid)
-	fmt.Fprintf(w, "VM %s marked and published for stop", uuid)
-}
-
-func extractUUID(path, suffix string) string {
-	if !strings.HasSuffix(path, suffix) {
-		return ""
-	}
-	uuid := strings.TrimSuffix(strings.TrimPrefix(path, "/api/v1/vms/"), suffix)
-	return strings.Trim(uuid, "/")
+	fmt.Fprintf(w, "%s action sent to %s", action, uuid)
+	log.Printf("✅ %s action published for VM %s to channel %s", action, uuid, channel)
 }
 
 func UpdateVMHandler(w http.ResponseWriter, r *http.Request) {
@@ -161,30 +114,26 @@ func UpdateVMHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-
 	var update struct {
 		UUID      string `json:"uuid"`
 		Action    string `json:"action"`
 		Result    string `json:"result"`
 		Timestamp string `json:"timestamp"`
 	}
-
 	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
-		log.Printf("Error decoding update JSON: %v", err)
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-
-	err := UpdateVMStatus(update.UUID, update.Action, update.Result, update.Timestamp)
-	if err != nil {
-		log.Printf("❌ Failed to update VM %s: %v", update.UUID, err)
-		http.Error(w, "Failed to update VM", http.StatusInternalServerError)
+	log.Printf("ℹ️ Update received: %s %s → %s", update.UUID, update.Action, update.Result)
+	if err := UpdateVMState(update.UUID, update.Result); err != nil {
+		http.Error(w, "Failed to update VM state", http.StatusInternalServerError)
 		return
 	}
+	fmt.Fprint(w, "Update processed")
+}
 
-	log.Printf("✅ Update recebido: UUID=%s, Action=%s, Result=%s, Timestamp=%s",
-		update.UUID, update.Action, update.Result, update.Timestamp)
-
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, "Update recebido")
+func enableCORS(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-API-KEY")
 }
