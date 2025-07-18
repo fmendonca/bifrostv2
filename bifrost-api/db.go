@@ -54,9 +54,7 @@ func InitDB() {
 		log.Fatal("Database ping failed:", err)
 	}
 	log.Println("✅ Connected to PostgreSQL")
-
 	autoMigrate()
-	ensureFrontendHost()
 }
 
 func autoMigrate() {
@@ -93,20 +91,6 @@ func autoMigrate() {
 	log.Println("✅ Auto-migrate done")
 }
 
-func ensureFrontendHost() {
-	const frontendName = "frontend-dashboard"
-	host, err := GetHostByName(frontendName)
-	if err == nil && host != nil {
-		log.Printf("✅ Frontend host '%s' already exists", frontendName)
-		return
-	}
-	newHost, err := RegisterHost(frontendName)
-	if err != nil {
-		log.Fatalf("❌ Failed to create frontend host: %v", err)
-	}
-	log.Printf("✅ Frontend host created: %s with API key %s", newHost.Name, newHost.APIKey)
-}
-
 func RegisterHost(name string) (*Host, error) {
 	hostUUID := uuid.New().String()
 	apiKey := uuid.New().String()
@@ -125,20 +109,27 @@ func GetHostByName(name string) (*Host, error) {
 	var h Host
 	err := DB.QueryRow(`SELECT id, name, uuid, api_key, redis_channel, status, last_seen FROM hosts WHERE name=$1`, name).
 		Scan(&h.ID, &h.Name, &h.UUID, &h.APIKey, &h.RedisChannel, &h.Status, &h.LastSeen)
-	if err != nil {
-		return nil, err
-	}
-	return &h, nil
+	return &h, err
 }
 
 func GetHostByAPIKey(apiKey string) (*Host, error) {
 	var h Host
 	err := DB.QueryRow(`SELECT id, name, uuid, api_key, redis_channel, status, last_seen FROM hosts WHERE api_key=$1`, apiKey).
 		Scan(&h.ID, &h.Name, &h.UUID, &h.APIKey, &h.RedisChannel, &h.Status, &h.LastSeen)
-	if err != nil {
-		return nil, err
+	return &h, err
+}
+
+func GetOrCreateFrontendHost() (*Host, error) {
+	const frontendName = "bifrost-frontend"
+	host, err := GetHostByName(frontendName)
+	if err == nil {
+		return host, nil
 	}
-	return &h, nil
+	newHost, err := RegisterHost(frontendName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create frontend host: %w", err)
+	}
+	return newHost, nil
 }
 
 func InsertOrUpdateVM(vm VM) (string, error) {
@@ -169,11 +160,18 @@ func GetAllVMs() ([]VM, error) {
 	var vms []VM
 	for rows.Next() {
 		var vm VM
+		var pendingAction sql.NullString
+		var hostUUID sql.NullString
+
 		err := rows.Scan(&vm.Name, &vm.UUID, &vm.State, &vm.CPUAllocation, &vm.MemoryAllocation,
-			&vm.Disks, &vm.Interfaces, &vm.Metadata, &vm.Timestamp, &vm.PendingAction, &vm.HostUUID)
+			&vm.Disks, &vm.Interfaces, &vm.Metadata, &vm.Timestamp, &pendingAction, &hostUUID)
 		if err != nil {
 			return nil, err
 		}
+
+		vm.PendingAction = pendingAction.String
+		vm.HostUUID = hostUUID.String
+
 		vms = append(vms, vm)
 	}
 	return vms, nil
@@ -182,18 +180,4 @@ func GetAllVMs() ([]VM, error) {
 func UpdateVMState(uuid string, state string) error {
 	_, err := DB.Exec(`UPDATE vms SET state=$1, pending_action=NULL, timestamp=NOW() WHERE uuid=$2`, state, uuid)
 	return err
-}
-
-func GetOrCreateFrontendHost() (*Host, error) {
-	const frontendName = "bifrost-frontend"
-	host, err := GetHostByName(frontendName)
-	if err == nil {
-		return host, nil
-	}
-	// Se não achou, cria
-	newHost, err := RegisterHost(frontendName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create frontend host: %w", err)
-	}
-	return newHost, nil
 }
