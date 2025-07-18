@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 import VmList from './components/VmList';
 import VmDetails from './components/VmDetails';
 import Sidebar from './components/Sidebar';
 import Spinner from './components/Spinner';
+import HostsPage from './components/HostsPage';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -13,9 +15,9 @@ function App() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [apiKey, setApiKey] = useState('');
 
-  // ✅ Lê variáveis runtime do env.js
   const API_URL = window._env_?.REACT_APP_API_URL || '';
   const FRONTEND_SECRET = window._env_?.REACT_APP_FRONTEND_SECRET || 'meuSegredoForte';
+  const navigate = useNavigate();
 
   const fetchApiKey = async () => {
     try {
@@ -63,7 +65,6 @@ function App() {
     fetchVMs();
     const interval = setInterval(fetchVMs, 5000);
     return () => clearInterval(interval);
-
   }, [apiKey]);
 
   const handleAction = async (uuid, action) => {
@@ -89,35 +90,46 @@ function App() {
       <Sidebar />
       <div className="flex-1 p-4">
         <ToastContainer position="top-right" autoClose={3000} />
-        <h1 className="text-3xl font-bold mb-4 text-center text-bifrostBlue">
-          Bifrost VM Dashboard
-        </h1>
 
-        {initialLoading ? (
-          <Spinner />
-        ) : (
-          <>
-            {loading && (
-              <div className="fixed inset-0 bg-black bg-opacity-25 flex justify-center items-center z-50">
-                <Spinner />
-              </div>
-            )}
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <>
+                <h1 className="text-3xl font-bold mb-4 text-center text-bifrostBlue">
+                  Bifrost VM Dashboard
+                </h1>
 
-            <div className="flex flex-col md:flex-row gap-4">
-              <VmList
-                vms={vms}
-                onSelectVm={setSelectedVm}
-                onAction={handleAction}
-                loading={loading}
-              />
-              {selectedVm && (
-                <VmDetails
-                  vm={{ ...selectedVm, onAction: handleAction }}
-                />
-              )}
-            </div>
-          </>
-        )}
+                {initialLoading ? (
+                  <Spinner />
+                ) : (
+                  <>
+                    {loading && (
+                      <div className="fixed inset-0 bg-black bg-opacity-25 flex justify-center items-center z-50">
+                        <Spinner />
+                      </div>
+                    )}
+
+                    <div className="flex flex-col md:flex-row gap-4">
+                      <VmList
+                        vms={vms}
+                        onSelectVm={setSelectedVm}
+                        onAction={handleAction}
+                        loading={loading}
+                      />
+                      {selectedVm && (
+                        <VmDetails
+                          vm={{ ...selectedVm, onAction: handleAction }}
+                        />
+                      )}
+                    </div>
+                  </>
+                )}
+              </>
+            }
+          />
+          <Route path="/hosts" element={<HostsPage apiUrl={API_URL} />} />
+        </Routes>
       </div>
     </div>
   );
