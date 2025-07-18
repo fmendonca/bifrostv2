@@ -20,7 +20,7 @@ podman run -d --name $API_CONTAINER --env-file bifrost-api/env -p $API_PORT:8080
 
 # 🚀 Start Frontend container
 echo "🚀 Starting Bifrost Frontend on port $FRONT_PORT..."
-podman run -d --name $FRONT_CONTAINER -p $FRONT_PORT:8080 $FRONT_IMAGE
+podman run -d --name $FRONT_CONTAINER -e REACT_APP_FRONTEND_SECRET=meuSegredoForte -p $FRONT_PORT:8080 $FRONT_IMAGE
 
 # ✅ Status
 echo "✅ Bifrost API running at: http://localhost:$API_PORT"

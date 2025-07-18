@@ -54,7 +54,9 @@ func InitDB() {
 		log.Fatal("Database ping failed:", err)
 	}
 	log.Println("✅ Connected to PostgreSQL")
+
 	autoMigrate()
+	ensureFrontendHost()
 }
 
 func autoMigrate() {
@@ -91,6 +93,20 @@ func autoMigrate() {
 	log.Println("✅ Auto-migrate done")
 }
 
+func ensureFrontendHost() {
+	const frontendName = "frontend-dashboard"
+	host, err := GetHostByName(frontendName)
+	if err == nil && host != nil {
+		log.Printf("✅ Frontend host '%s' already exists", frontendName)
+		return
+	}
+	newHost, err := RegisterHost(frontendName)
+	if err != nil {
+		log.Fatalf("❌ Failed to create frontend host: %v", err)
+	}
+	log.Printf("✅ Frontend host created: %s with API key %s", newHost.Name, newHost.APIKey)
+}
+
 func RegisterHost(name string) (*Host, error) {
 	hostUUID := uuid.New().String()
 	apiKey := uuid.New().String()
@@ -109,14 +125,20 @@ func GetHostByName(name string) (*Host, error) {
 	var h Host
 	err := DB.QueryRow(`SELECT id, name, uuid, api_key, redis_channel, status, last_seen FROM hosts WHERE name=$1`, name).
 		Scan(&h.ID, &h.Name, &h.UUID, &h.APIKey, &h.RedisChannel, &h.Status, &h.LastSeen)
-	return &h, err
+	if err != nil {
+		return nil, err
+	}
+	return &h, nil
 }
 
 func GetHostByAPIKey(apiKey string) (*Host, error) {
 	var h Host
 	err := DB.QueryRow(`SELECT id, name, uuid, api_key, redis_channel, status, last_seen FROM hosts WHERE api_key=$1`, apiKey).
 		Scan(&h.ID, &h.Name, &h.UUID, &h.APIKey, &h.RedisChannel, &h.Status, &h.LastSeen)
-	return &h, err
+	if err != nil {
+		return nil, err
+	}
+	return &h, nil
 }
 
 func InsertOrUpdateVM(vm VM) (string, error) {

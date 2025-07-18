@@ -20,6 +20,29 @@ func enableCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-API-KEY")
 }
 
+func FrontendKeyHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	secret := r.URL.Query().Get("secret")
+	expected := getEnv("FRONTEND_BOOT_SECRET", "meuSegredoForte")
+
+	if secret != expected {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	host, err := GetHostByName("frontend-dashboard")
+	if err != nil {
+		http.Error(w, "Frontend host not found", http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]string{"api_key": host.APIKey})
+}
+
 func RegisterHostHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == http.MethodOptions {
