@@ -11,10 +11,10 @@ func main() {
 	InitRedis()
 	defer DB.Close()
 
-	// Public route: agent registration
+	// Rotas públicas
 	http.HandleFunc("/api/v1/agent/register", RegisterHostHandler)
 
-	// Protected routes (with auth)
+	// Rotas autenticadas
 	http.HandleFunc("/api/v1/vms", AuthMiddleware(VMsHandler))
 	http.HandleFunc("/api/v1/vms/update", AuthMiddleware(UpdateVMHandler))
 	http.HandleFunc("/api/v1/vms/", AuthMiddleware(vmActionRouter))
@@ -25,9 +25,13 @@ func main() {
 
 func vmActionRouter(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
-	if strings.HasSuffix(path, "/start") || strings.HasSuffix(path, "/stop") {
-		StartStopHandler(w, r)
-	} else {
+
+	switch {
+	case strings.HasSuffix(path, "/start"):
+		StartVMHandler(w, r)
+	case strings.HasSuffix(path, "/stop"):
+		StopVMHandler(w, r)
+	default:
 		http.NotFound(w, r)
 	}
 }
