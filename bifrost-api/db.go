@@ -183,3 +183,17 @@ func UpdateVMState(uuid string, state string) error {
 	_, err := DB.Exec(`UPDATE vms SET state=$1, pending_action=NULL, timestamp=NOW() WHERE uuid=$2`, state, uuid)
 	return err
 }
+
+func GetOrCreateFrontendHost() (*Host, error) {
+	const frontendName = "bifrost-frontend"
+	host, err := GetHostByName(frontendName)
+	if err == nil {
+		return host, nil
+	}
+	// Se não achou, cria
+	newHost, err := RegisterHost(frontendName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create frontend host: %w", err)
+	}
+	return newHost, nil
+}
