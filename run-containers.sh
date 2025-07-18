@@ -4,7 +4,7 @@ set -e
 
 API_CONTAINER="bifrost-api"
 FRONT_CONTAINER="bifrost-frontend"
-API_IMAGE="bifrost-api:0.4"
+API_IMAGE="bifrost-api:0.5"
 FRONT_IMAGE="bifrost-frontend:0.6"
 API_PORT="8080"
 FRONT_PORT="3000"

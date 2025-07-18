@@ -3,7 +3,7 @@
 set -e
 
 # Configuração
-API_IMAGE="bifrost-api:0.4"
+API_IMAGE="bifrost-api:0.5"
 FRONT_IMAGE="bifrost-frontend:0.6"
 API_DIR="./bifrost-api"
 FRONT_DIR="./bifrost-frontend"
