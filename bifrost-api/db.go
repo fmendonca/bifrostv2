@@ -79,8 +79,8 @@ func autoMigrate() {
 			interfaces JSONB,
 			metadata JSONB,
 			timestamp TIMESTAMP WITH TIME ZONE,
-			pending_action TEXT,
-			host_uuid UUID REFERENCES hosts(uuid)
+			pending_action TEXT DEFAULT '',
+			host_uuid UUID
 		);`,
 	}
 	for _, q := range queries {
@@ -119,19 +119,6 @@ func GetHostByAPIKey(apiKey string) (*Host, error) {
 	return &h, err
 }
 
-func GetOrCreateFrontendHost() (*Host, error) {
-	const frontendName = "bifrost-frontend"
-	host, err := GetHostByName(frontendName)
-	if err == nil {
-		return host, nil
-	}
-	newHost, err := RegisterHost(frontendName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create frontend host: %w", err)
-	}
-	return newHost, nil
-}
-
 func InsertOrUpdateVM(vm VM) (string, error) {
 	_, err := DB.Exec(`
 		INSERT INTO vms 
@@ -151,7 +138,10 @@ func InsertOrUpdateVM(vm VM) (string, error) {
 }
 
 func GetAllVMs() ([]VM, error) {
-	rows, err := DB.Query(`SELECT name, uuid, state, cpu_allocation, memory_allocation, disks, interfaces, metadata, timestamp, pending_action, host_uuid FROM vms ORDER BY timestamp DESC`)
+	rows, err := DB.Query(`
+		SELECT name, uuid, state, cpu_allocation, memory_allocation, disks, interfaces, metadata, timestamp, pending_action, host_uuid
+		FROM vms ORDER BY timestamp DESC
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -166,11 +156,19 @@ func GetAllVMs() ([]VM, error) {
 		err := rows.Scan(&vm.Name, &vm.UUID, &vm.State, &vm.CPUAllocation, &vm.MemoryAllocation,
 			&vm.Disks, &vm.Interfaces, &vm.Metadata, &vm.Timestamp, &pendingAction, &hostUUID)
 		if err != nil {
-			return nil, err
+			log.Printf("⚠️ Error scanning VM row: %v", err)
+			continue
 		}
 
-		vm.PendingAction = pendingAction.String
-		vm.HostUUID = hostUUID.String
+		vm.PendingAction = ""
+		if pendingAction.Valid {
+			vm.PendingAction = pendingAction.String
+		}
+
+		vm.HostUUID = ""
+		if hostUUID.Valid {
+			vm.HostUUID = hostUUID.String
+		}
 
 		vms = append(vms, vm)
 	}
