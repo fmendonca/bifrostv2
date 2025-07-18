@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import VmList from './components/VmList';
 import VmDetails from './components/VmDetails';
 import Sidebar from './components/Sidebar';
@@ -17,7 +17,6 @@ function App() {
 
   const API_URL = window._env_?.REACT_APP_API_URL || '';
   const FRONTEND_SECRET = window._env_?.REACT_APP_FRONTEND_SECRET || 'meuSegredoForte';
-  const navigate = useNavigate();
 
   const fetchApiKey = async () => {
     try {
@@ -90,16 +89,24 @@ function App() {
       <Sidebar />
       <div className="flex-1 p-4">
         <ToastContainer position="top-right" autoClose={3000} />
-
         <Routes>
           <Route
             path="/"
             element={
+              <div className="flex justify-center items-center h-full">
+                <h1 className="text-4xl font-bold text-bifrostBlue">
+                  Bem-vindo ao Bifrost Dashboard 🚀
+                </h1>
+              </div>
+            }
+          />
+          <Route
+            path="/vms"
+            element={
               <>
                 <h1 className="text-3xl font-bold mb-4 text-center text-bifrostBlue">
-                  Bifrost VM Dashboard
+                  Lista de VMs
                 </h1>
-
                 {initialLoading ? (
                   <Spinner />
                 ) : (
@@ -109,7 +116,6 @@ function App() {
                         <Spinner />
                       </div>
                     )}
-
                     <div className="flex flex-col md:flex-row gap-4">
                       <VmList
                         vms={vms}

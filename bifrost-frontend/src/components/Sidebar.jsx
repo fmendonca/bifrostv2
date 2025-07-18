@@ -8,7 +8,7 @@ function Sidebar() {
     <Link
       to={path}
       className={`block p-2 rounded hover:bg-gray-700 ${
-        location.pathname.startsWith(path) ? 'bg-gray-700' : ''
+        location.pathname === path ? 'bg-gray-700' : ''
       }`}
     >
       {label}
@@ -21,11 +21,10 @@ function Sidebar() {
         Bifrost
       </div>
       <nav className="flex-1 p-2 space-y-1">
-        {menuItem('/compute', '🖥️ Compute')}
-        {menuItem('/storage', '💾 Storage')}
-        {menuItem('/network', '🌐 Network')}
+        {menuItem('/', '🏠 Home')}
+        {menuItem('/vms', '🖥️ VMs')}
         {menuItem('/hosts', '🛠️ Hosts')}
-        {menuItem('/logs', '📜 Logs')}
+        {/* Você pode adicionar mais rotas aqui */}
       </nav>
     </div>
   );
