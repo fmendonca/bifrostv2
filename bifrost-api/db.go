@@ -71,7 +71,7 @@ func autoMigrate() {
 		`CREATE TABLE IF NOT EXISTS vms (
 			id SERIAL PRIMARY KEY,
 			name TEXT NOT NULL,
-			uuid UUID UNIQUE NOT NULL,
+			uuid UUID NOT NULL UNIQUE,
 			state TEXT,
 			cpu_allocation INTEGER,
 			memory_allocation BIGINT,
@@ -79,37 +79,16 @@ func autoMigrate() {
 			interfaces JSONB,
 			metadata JSONB,
 			timestamp TIMESTAMP WITH TIME ZONE,
-			pending_action TEXT DEFAULT ''
+			pending_action TEXT DEFAULT '',
+			host_uuid UUID REFERENCES hosts(uuid)
 		);`,
 	}
 	for _, q := range queries {
 		if _, err := DB.Exec(q); err != nil {
-			log.Fatal("Auto-migrate failed:", err)
+			log.Fatal("❌ Auto-migrate failed:", err)
 		}
 	}
-
-	// Check and add host_uuid column if missing
-	var exists bool
-	err := DB.QueryRow(`
-		SELECT EXISTS (
-			SELECT 1 FROM information_schema.columns
-			WHERE table_name='vms' AND column_name='host_uuid'
-		);
-	`).Scan(&exists)
-	if err != nil {
-		log.Fatal("Failed to check for host_uuid column:", err)
-	}
-
-	if !exists {
-		log.Println("⚙️ Adding missing host_uuid column to vms...")
-		_, err := DB.Exec(`ALTER TABLE vms ADD COLUMN host_uuid UUID`)
-		if err != nil {
-			log.Fatal("Failed to add host_uuid column:", err)
-		}
-		log.Println("✅ host_uuid column added successfully")
-	}
-
-	log.Println("✅ Auto-migrate completed")
+	log.Println("✅ Auto-migrate done")
 }
 
 func RegisterHost(name string) (*Host, error) {
@@ -138,6 +117,27 @@ func GetHostByAPIKey(apiKey string) (*Host, error) {
 	err := DB.QueryRow(`SELECT id, name, uuid, api_key, redis_channel, status, last_seen FROM hosts WHERE api_key=$1`, apiKey).
 		Scan(&h.ID, &h.Name, &h.UUID, &h.APIKey, &h.RedisChannel, &h.Status, &h.LastSeen)
 	return &h, err
+}
+
+func GetOrCreateFrontendHost() (*Host, error) {
+	name := "bifrost-frontend"
+	h, err := GetHostByName(name)
+	if err == nil {
+		return h, nil
+	}
+	// se não existe, cria
+	hostUUID := uuid.New().String()
+	apiKey := uuid.New().String()
+	channel := fmt.Sprintf("frontend-channel-%s", hostUUID)
+
+	_, err = DB.Exec(`INSERT INTO hosts (name, uuid, api_key, redis_channel, status)
+		VALUES ($1, $2, $3, $4, 'frontend')`,
+		name, hostUUID, apiKey, channel)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create frontend host: %w", err)
+	}
+
+	return GetHostByName(name)
 }
 
 func InsertOrUpdateVM(vm VM) (string, error) {
@@ -181,9 +181,12 @@ func GetAllVMs() ([]VM, error) {
 			continue
 		}
 
+		vm.PendingAction = ""
 		if pendingAction.Valid {
 			vm.PendingAction = pendingAction.String
 		}
+
+		vm.HostUUID = ""
 		if hostUUID.Valid {
 			vm.HostUUID = hostUUID.String
 		}
