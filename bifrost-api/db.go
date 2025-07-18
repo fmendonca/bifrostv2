@@ -71,7 +71,7 @@ func autoMigrate() {
 		`CREATE TABLE IF NOT EXISTS vms (
 			id SERIAL PRIMARY KEY,
 			name TEXT NOT NULL,
-			uuid UUID NOT NULL UNIQUE,
+			uuid UUID UNIQUE NOT NULL,
 			state TEXT,
 			cpu_allocation INTEGER,
 			memory_allocation BIGINT,
@@ -79,8 +79,7 @@ func autoMigrate() {
 			interfaces JSONB,
 			metadata JSONB,
 			timestamp TIMESTAMP WITH TIME ZONE,
-			pending_action TEXT DEFAULT '',
-			host_uuid UUID
+			pending_action TEXT DEFAULT ''
 		);`,
 	}
 	for _, q := range queries {
@@ -88,7 +87,29 @@ func autoMigrate() {
 			log.Fatal("Auto-migrate failed:", err)
 		}
 	}
-	log.Println("✅ Auto-migrate done")
+
+	// Check and add host_uuid column if missing
+	var exists bool
+	err := DB.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_name='vms' AND column_name='host_uuid'
+		);
+	`).Scan(&exists)
+	if err != nil {
+		log.Fatal("Failed to check for host_uuid column:", err)
+	}
+
+	if !exists {
+		log.Println("⚙️ Adding missing host_uuid column to vms...")
+		_, err := DB.Exec(`ALTER TABLE vms ADD COLUMN host_uuid UUID`)
+		if err != nil {
+			log.Fatal("Failed to add host_uuid column:", err)
+		}
+		log.Println("✅ host_uuid column added successfully")
+	}
+
+	log.Println("✅ Auto-migrate completed")
 }
 
 func RegisterHost(name string) (*Host, error) {
@@ -160,12 +181,9 @@ func GetAllVMs() ([]VM, error) {
 			continue
 		}
 
-		vm.PendingAction = ""
 		if pendingAction.Valid {
 			vm.PendingAction = pendingAction.String
 		}
-
-		vm.HostUUID = ""
 		if hostUUID.Valid {
 			vm.HostUUID = hostUUID.String
 		}
