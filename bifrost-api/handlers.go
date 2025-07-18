@@ -28,18 +28,17 @@ func FrontendKeyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	secret := r.URL.Query().Get("secret")
-	expected := getEnv("FRONTEND_BOOT_SECRET", "meuSegredoForte")
-
-	if secret != expected {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	if secret == "" || secret != getEnv("FRONTEND_BOOT_SECRET", "meuSegredoForte") {
+		http.Error(w, "Invalid secret", http.StatusUnauthorized)
 		return
 	}
 
-	host, err := GetHostByName("frontend-dashboard")
+	host, err := GetOrCreateFrontendHost()
 	if err != nil {
-		http.Error(w, "Frontend host not found", http.StatusInternalServerError)
+		http.Error(w, "Failed to get frontend key", http.StatusInternalServerError)
 		return
 	}
+
 	json.NewEncoder(w).Encode(map[string]string{"api_key": host.APIKey})
 }
 
