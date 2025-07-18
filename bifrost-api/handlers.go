@@ -78,6 +78,7 @@ func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, "Missing API key", http.StatusUnauthorized)
 			return
 		}
+
 		host, err := GetHostByAPIKey(apiKey)
 		if err != nil {
 			http.Error(w, "Invalid API key", http.StatusUnauthorized)
@@ -85,17 +86,13 @@ func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 		r.Header.Set("X-HOST-UUID", host.UUID)
 		r.Header.Set("X-REDIS-CHANNEL", host.RedisChannel)
+
 		next(w, r)
 	}
 }
 
 func VMsHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	start := time.Now()
 	hostUUID := r.Header.Get("X-HOST-UUID")
 
@@ -108,7 +105,9 @@ func VMsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, vm := range payload.VMs {
 			vm.HostUUID = hostUUID
-			InsertOrUpdateVM(vm)
+			if _, err := InsertOrUpdateVM(vm); err != nil {
+				log.Printf("⚠️ Failed to insert/update VM %s: %v", vm.Name, err)
+			}
 		}
 		fmt.Fprintf(w, "Processed %d VMs", len(payload.VMs))
 
@@ -119,6 +118,9 @@ func VMsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		json.NewEncoder(w).Encode(vms)
+
+	case http.MethodOptions:
+		w.WriteHeader(http.StatusOK)
 
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -188,8 +190,7 @@ func UpdateVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := UpdateVMState(update.UUID, update.Result)
-	if err != nil {
+	if err := UpdateVMState(update.UUID, update.Result); err != nil {
 		http.Error(w, "Failed to update VM", http.StatusInternalServerError)
 		return
 	}

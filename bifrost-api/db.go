@@ -48,10 +48,10 @@ func InitDB() {
 
 	DB, err = sql.Open("postgres", connStr)
 	if err != nil {
-		log.Fatal("Database connection failed:", err)
+		log.Fatal("❌ Database connection failed:", err)
 	}
 	if err = DB.Ping(); err != nil {
-		log.Fatal("Database ping failed:", err)
+		log.Fatal("❌ Database ping failed:", err)
 	}
 	log.Println("✅ Connected to PostgreSQL")
 	autoMigrate()
@@ -91,6 +91,25 @@ func autoMigrate() {
 	log.Println("✅ Auto-migrate done")
 }
 
+func GetOrCreateFrontendHost() (*Host, error) {
+	name := "bifrost-frontend"
+	h, err := GetHostByName(name)
+	if err == nil {
+		return h, nil
+	}
+	hostUUID := uuid.New().String()
+	apiKey := uuid.New().String()
+	channel := fmt.Sprintf("frontend-channel-%s", hostUUID)
+
+	_, err = DB.Exec(`INSERT INTO hosts (name, uuid, api_key, redis_channel, status)
+		VALUES ($1, $2, $3, $4, 'frontend')`,
+		name, hostUUID, apiKey, channel)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create frontend host: %w", err)
+	}
+	return GetHostByName(name)
+}
+
 func RegisterHost(name string) (*Host, error) {
 	hostUUID := uuid.New().String()
 	apiKey := uuid.New().String()
@@ -117,27 +136,6 @@ func GetHostByAPIKey(apiKey string) (*Host, error) {
 	err := DB.QueryRow(`SELECT id, name, uuid, api_key, redis_channel, status, last_seen FROM hosts WHERE api_key=$1`, apiKey).
 		Scan(&h.ID, &h.Name, &h.UUID, &h.APIKey, &h.RedisChannel, &h.Status, &h.LastSeen)
 	return &h, err
-}
-
-func GetOrCreateFrontendHost() (*Host, error) {
-	name := "bifrost-frontend"
-	h, err := GetHostByName(name)
-	if err == nil {
-		return h, nil
-	}
-	// se não existe, cria
-	hostUUID := uuid.New().String()
-	apiKey := uuid.New().String()
-	channel := fmt.Sprintf("frontend-channel-%s", hostUUID)
-
-	_, err = DB.Exec(`INSERT INTO hosts (name, uuid, api_key, redis_channel, status)
-		VALUES ($1, $2, $3, $4, 'frontend')`,
-		name, hostUUID, apiKey, channel)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create frontend host: %w", err)
-	}
-
-	return GetHostByName(name)
 }
 
 func InsertOrUpdateVM(vm VM) (string, error) {
@@ -171,8 +169,7 @@ func GetAllVMs() ([]VM, error) {
 	var vms []VM
 	for rows.Next() {
 		var vm VM
-		var pendingAction sql.NullString
-		var hostUUID sql.NullString
+		var pendingAction, hostUUID sql.NullString
 
 		err := rows.Scan(&vm.Name, &vm.UUID, &vm.State, &vm.CPUAllocation, &vm.MemoryAllocation,
 			&vm.Disks, &vm.Interfaces, &vm.Metadata, &vm.Timestamp, &pendingAction, &hostUUID)
@@ -181,14 +178,16 @@ func GetAllVMs() ([]VM, error) {
 			continue
 		}
 
-		vm.PendingAction = ""
 		if pendingAction.Valid {
 			vm.PendingAction = pendingAction.String
+		} else {
+			vm.PendingAction = ""
 		}
 
-		vm.HostUUID = ""
 		if hostUUID.Valid {
 			vm.HostUUID = hostUUID.String
+		} else {
+			vm.HostUUID = ""
 		}
 
 		vms = append(vms, vm)
