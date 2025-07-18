@@ -38,16 +38,13 @@ type VM struct {
 
 func InitDB() {
 	var err error
-
-	host := getEnv("DB_HOST", "localhost")
-	port := getEnv("DB_PORT", "5432")
-	user := getEnv("DB_USER", "postgres")
-	password := getEnv("DB_PASSWORD", "postgres")
-	dbname := getEnv("DB_NAME", "bifrost")
-	sslmode := getEnv("DB_SSLMODE", "disable")
-
 	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		host, port, user, password, dbname, sslmode)
+		getEnv("DB_HOST", "localhost"),
+		getEnv("DB_PORT", "5432"),
+		getEnv("DB_USER", "postgres"),
+		getEnv("DB_PASSWORD", "postgres"),
+		getEnv("DB_NAME", "bifrost"),
+		getEnv("DB_SSLMODE", "disable"))
 
 	DB, err = sql.Open("postgres", connStr)
 	if err != nil {
@@ -56,8 +53,7 @@ func InitDB() {
 	if err = DB.Ping(); err != nil {
 		log.Fatal("Database ping failed:", err)
 	}
-	log.Println("Connected to PostgreSQL database:", dbname)
-
+	log.Println("✅ Connected to PostgreSQL database")
 	autoMigrate()
 }
 
@@ -92,15 +88,16 @@ func autoMigrate() {
 			log.Fatal("Auto-migrate failed:", err)
 		}
 	}
-	log.Println("Auto-migrate completed.")
+	log.Println("✅ Auto-migrate completed")
 }
 
 func RegisterHost(name string) (*Host, error) {
 	id := uuid.New().String()
 	key := uuid.New().String()
 	channel := fmt.Sprintf("vm-actions-%s", id)
-	_, err := DB.Exec(`INSERT INTO hosts (name, uuid, api_key, redis_channel) VALUES ($1, $2, $3, $4)
-	ON CONFLICT (name) DO UPDATE SET last_seen = NOW(), status = 'active'`,
+	_, err := DB.Exec(`INSERT INTO hosts (name, uuid, api_key, redis_channel)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (name) DO UPDATE SET last_seen = NOW(), status = 'active'`,
 		name, id, key, channel)
 	if err != nil {
 		return nil, err
@@ -108,16 +105,71 @@ func RegisterHost(name string) (*Host, error) {
 	return GetHostByName(name)
 }
 
-func GetHostByAPIKey(apiKey string) (*Host, error) {
-	row := DB.QueryRow(`SELECT id, name, uuid, api_key, redis_channel, status, last_seen FROM hosts WHERE api_key = $1`, apiKey)
+func GetHostByName(name string) (*Host, error) {
 	var h Host
-	err := row.Scan(&h.ID, &h.Name, &h.UUID, &h.APIKey, &h.RedisChannel, &h.Status, &h.LastSeen)
+	err := DB.QueryRow(`SELECT id, name, uuid, api_key, redis_channel, status, last_seen FROM hosts WHERE name=$1`, name).
+		Scan(&h.ID, &h.Name, &h.UUID, &h.APIKey, &h.RedisChannel, &h.Status, &h.LastSeen)
 	return &h, err
 }
 
-func GetHostByName(name string) (*Host, error) {
-	row := DB.QueryRow(`SELECT id, name, uuid, api_key, redis_channel, status, last_seen FROM hosts WHERE name = $1`, name)
+func GetHostByAPIKey(apiKey string) (*Host, error) {
 	var h Host
-	err := row.Scan(&h.ID, &h.Name, &h.UUID, &h.APIKey, &h.RedisChannel, &h.Status, &h.LastSeen)
+	err := DB.QueryRow(`SELECT id, name, uuid, api_key, redis_channel, status, last_seen FROM hosts WHERE api_key=$1`, apiKey).
+		Scan(&h.ID, &h.Name, &h.UUID, &h.APIKey, &h.RedisChannel, &h.Status, &h.LastSeen)
 	return &h, err
+}
+
+func InsertOrUpdateVM(vm VM) (string, error) {
+	_, err := DB.Exec(`
+		INSERT INTO vms 
+		(name, uuid, state, cpu_allocation, memory_allocation, disks, interfaces, metadata, timestamp, pending_action, host_uuid)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		ON CONFLICT (uuid) DO UPDATE SET 
+			name=EXCLUDED.name,
+			state=EXCLUDED.state,
+			cpu_allocation=EXCLUDED.cpu_allocation,
+			memory_allocation=EXCLUDED.memory_allocation,
+			disks=EXCLUDED.disks,
+			interfaces=EXCLUDED.interfaces,
+			metadata=EXCLUDED.metadata,
+			timestamp=EXCLUDED.timestamp,
+			pending_action=EXCLUDED.pending_action,
+			host_uuid=EXCLUDED.host_uuid
+	`, vm.Name, vm.UUID, vm.State, vm.CPUAllocation, vm.MemoryAllocation,
+		vm.Disks, vm.Interfaces, vm.Metadata, vm.Timestamp, vm.PendingAction, vm.HostUUID)
+	if err != nil {
+		return "", err
+	}
+	return "ok", nil
+}
+
+func GetAllVMs() ([]VM, error) {
+	rows, err := DB.Query(`
+		SELECT name, uuid, state, cpu_allocation, memory_allocation, disks, interfaces, metadata, timestamp, pending_action, host_uuid
+		FROM vms ORDER BY timestamp DESC LIMIT 100
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var vms []VM
+	for rows.Next() {
+		var vm VM
+		err := rows.Scan(&vm.Name, &vm.UUID, &vm.State, &vm.CPUAllocation, &vm.MemoryAllocation,
+			&vm.Disks, &vm.Interfaces, &vm.Metadata, &vm.Timestamp, &vm.PendingAction, &vm.HostUUID)
+		if err != nil {
+			return nil, err
+		}
+		vms = append(vms, vm)
+	}
+	return vms, nil
+}
+
+func UpdateVMState(uuid string, state string) error {
+	_, err := DB.Exec(`
+		UPDATE vms SET state=$1, pending_action=NULL, timestamp=NOW()
+		WHERE uuid=$2
+	`, state, uuid)
+	return err
 }
