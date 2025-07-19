@@ -1,6 +1,6 @@
 {
   "name": "bifrost-frontend",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Frontend para o Bifrost VM Dashboard",
   "scripts": {
@@ -12,6 +12,7 @@
   "dependencies": {
     "clsx": "^2.1.0",
     "date-fns": "^3.6.0",
+    "framer-motion": "^10.16.1",
     "lucide-react": "^0.293.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
